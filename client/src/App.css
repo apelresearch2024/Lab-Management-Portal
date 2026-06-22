@@ -1,0 +1,266 @@
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
+}
+
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
+}
+
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
+
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
+
+  .logo {
+    height: 18px;
+  }
+
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    li {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
+}
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+/* =========================================================
+   👑 PREMIUM ENTERPRISE LIGHT-THEME TOAST INTERFACE
+   ========================================================= */
+
+/* Set a refined layout constraint width */
+.Toastify__toast-container {
+  width: 420px !important;
+  max-width: 92vw !important;
+}
+
+/* Elegant Light Canvas Frame Structure */
+.Toastify__toast {
+  background: rgba(255, 255, 255, 0.98) !important; /* Premium clean pure white canvas */
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important; /* Ultra-soft light gray boundary line */
+  border-radius: 14px !important;
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 
+              0 8px 10px -6px rgba(15, 23, 42, 0.05) !important; /* Soft ambient shadow depth */
+  padding: 16px 20px !important;
+  margin-bottom: 12px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Minimalist Left Vertical Accent Status Indicators */
+.Toastify__toast::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  z-index: 10;
+}
+
+.Toastify__toast--success::before { background: #10b981 !important; } /* Emerald */
+.Toastify__toast--error::before   { background: #ef4444 !important; } /* Crimson */
+.Toastify__toast--warning::before { background: #f59e0b !important; } /* Amber */
+.Toastify__toast--info::before    { background: #3b82f6 !important; } /* Royal Blue */
+
+/* Premium High-Contrast Dark Typography Hierarchy */
+.Toastify__toast-body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  color: #0f172a !important; /* Crisp slate-charcoal text for crisp readability */
+  line-height: 1.5 !important;
+  padding-left: 8px !important;
+}
+
+/* 🛑 ABSOLUTELY HIDE THE ANIMATED LINE (PROGRESS BAR) */
+.Toastify__progress-bar {
+  display: none !important;
+  opacity: 0 !important;
+  height: 0px !important;
+  visibility: hidden !important;
+}
+
+/* Vector Graphic Status Icons Vector Sync */
+.Toastify__toast-icon {
+  width: 20px !important;
+  margin-right: 6px !important;
+}
+.Toastify__toast--success .Toastify__toast-icon svg { fill: #10b981 !important; }
+.Toastify__toast--error .Toastify__toast-icon svg { fill: #ef4444 !important; }
+.Toastify__toast--warning .Toastify__toast-icon svg { fill: #f59e0b !important; }
+.Toastify__toast--info .Toastify__toast-icon svg { fill: #3b82f6 !important; }
+
+/* Elegant Close Dismissal Cross Button Configuration */
+.Toastify__close-button {
+  color: #64748b !important; /* Muted slate gray */
+  opacity: 0.6 !important;
+  transition: all 0.2s ease !important;
+}
+.Toastify__close-button:hover {
+  color: #0f172a !important; /* Dark text focus target matching */
+  opacity: 1 !important;
+}
