@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { API_BASE_URL } from '../config';
+
 function Equipments({ user }) {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
   const [equipments, setEquipments] = useState([]);
@@ -139,32 +139,6 @@ function Equipments({ user }) {
     }
   };
 
-  const handleReleaseAsset = async (itemId) => {
-    setProcessingId(itemId);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/equipments/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ id: itemId, status: 'Available' })
-      });
-
-      if (response.ok) {
-        toast.success('Asset released back to public pool.');
-        fetchInventoryAndRequests();
-      } else {
-        const data = await response.json();
-        toast.error(data.message || 'Status transition update rejected.');
-      }
-    } catch (err) {
-      toast.error('Network transmission fault while releasing equipment.');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const handleWorkflowAction = async (requestId, actionType) => {
     setProcessingId(requestId);
     try {
@@ -289,8 +263,9 @@ function Equipments({ user }) {
     return 0;
   });
 
+  // Fixed the duplicate semicolon syntax glitch here
   const pendingRequestsCount = requests.filter(req => {
-    if (user?.role === 'Professor') return req.status === 'Pending Professor Approval';
+    if (user?.role === 'Professor') return req.status === 'Pending Professor Approval' || req.status === 'Reported Fault';
     if (user?.role === 'Scholar') return req.status === 'Pending Holder Approval' && req.equipmentHolder === user?.name;
     return false;
   }).length;
@@ -408,7 +383,6 @@ function Equipments({ user }) {
                         )}
                       </td>
 
-                      {/* Dynamic Conditional Action Handling */}
                       <td className="px-4 py-3.5 text-center">
                         {user?.role === 'Scholar' ? (
                           <div className="w-full">
@@ -436,7 +410,6 @@ function Equipments({ user }) {
                                 </div>
                               )
                             ) : (
-                              /* NEW LOOKUP INTERCEPTION BLOCK FOR SCHOLARS */
                               (() => {
                                 const pendingRequest = requests.find(req => 
                                   req.equipmentId === item.id && 
@@ -529,8 +502,9 @@ function Equipments({ user }) {
               </h2>
             </div>
 
+            {/* Changed this filter condition to include 'Reported Fault' checks */}
             {requests.filter(req => {
-              if (user.role === 'Professor') return req.status === 'Pending Professor Approval';
+              if (user.role === 'Professor') return req.status === 'Pending Professor Approval' || req.status === 'Reported Fault';
               if (user.role === 'Scholar') return req.status === 'Pending Holder Approval' && req.equipmentHolder === user.name;
               return false;
             }).length === 0 ? (
@@ -550,8 +524,9 @@ function Equipments({ user }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/40 align-middle">
+                    {/* Changed this row mapping filter to also match 'Reported Fault' states */}
                     {requests.filter(req => {
-                      if (user.role === 'Professor') return req.status === 'Pending Professor Approval';
+                      if (user.role === 'Professor') return req.status === 'Pending Professor Approval' || req.status === 'Reported Fault';
                       if (user.role === 'Scholar') return req.status === 'Pending Holder Approval' && req.equipmentHolder === user.name;
                       return false;
                     }).map(req => (
@@ -563,46 +538,74 @@ function Equipments({ user }) {
                           {req.requestedBy}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${req.duration === 'Short'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${
+                            req.status === 'Reported Fault'
+                              ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse'
+                              : req.duration === 'Short'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                           }`}>
-                            {req.duration} Term
+                            {req.status === 'Reported Fault' ? '⚠️ Fault Report' : `${req.duration} Term`}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-amber-400 font-semibold italic truncate">
+                        <td className={`px-4 py-3.5 font-semibold italic truncate ${req.status === 'Reported Fault' ? 'text-red-400' : 'text-amber-400'}`}>
                           {req.status}
                         </td>
                         <td className="px-4 py-3.5 text-center">
                           <div className="grid grid-cols-2 gap-1.5 w-full">
-                            <button
-                              disabled={processingId !== null}
-                              onClick={() => handleWorkflowAction(req.id, 'approve')}
-                              className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
-                            >
-                              {processingId === req.id ? (
-                                <>
-                                  <span className="inline-block animate-spin text-xs">⏳</span>
-                                  <span>Syncing...</span>
-                                </>
-                              ) : (
-                                <span>{user.role === 'Professor' ? 'Approve ✓' : 'Accept ✓'}</span>
-                              )}
-                            </button>
-                            <button
-                              disabled={processingId !== null}
-                              onClick={() => handleWorkflowAction(req.id, 'reject')}
-                              className="py-1.5 px-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm shadow-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
-                            >
-                              {processingId === req.id ? (
-                                <>
-                                  <span className="inline-block animate-spin text-xs">⏳</span>
-                                  <span>Syncing...</span>
-                                </>
-                              ) : (
-                                <span>{user.role === 'Professor' ? 'Reject ❌' : 'Decline ❌'}</span>
-                              )}
-                            </button>
+                            {/* Injected explicit unique handling for Fault actions inside the panel */}
+                            {req.status === 'Reported Fault' ? (
+                              <>
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={async () => {
+                                    await handleUpdateStatus(req.equipmentId, 'Maintenance');
+                                    await handleWorkflowAction(req.id, 'approve');
+                                  }}
+                                  className="py-1.5 px-2 bg-yellow-600 hover:bg-yellow-500 text-white font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm shadow-yellow-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
+                                >
+                                  {processingId === req.id ? 'Syncing...' : 'Fixing 🛠️'}
+                                </button>
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={() => handleWorkflowAction(req.id, 'reject')}
+                                  className="py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
+                                >
+                                  Dismiss ❌
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={() => handleWorkflowAction(req.id, 'approve')}
+                                  className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
+                                >
+                                  {processingId === req.id ? (
+                                    <>
+                                      <span className="inline-block animate-spin text-xs">⏳</span>
+                                      <span>Syncing...</span>
+                                    </>
+                                  ) : (
+                                    <span>{user.role === 'Professor' ? 'Approve ✓' : 'Accept ✓'}</span>
+                                  )}
+                                </button>
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={() => handleWorkflowAction(req.id, 'reject')}
+                                  className="py-1.5 px-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-md text-[11px] uppercase tracking-normal transition-all duration-150 shadow-sm shadow-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
+                                >
+                                  {processingId === req.id ? (
+                                    <>
+                                      <span className="inline-block animate-spin text-xs">⏳</span>
+                                      <span>Syncing...</span>
+                                    </>
+                                  ) : (
+                                    <span>{user.role === 'Professor' ? 'Reject ❌' : 'Decline ❌'}</span>
+                                  )}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -644,7 +647,7 @@ function Equipments({ user }) {
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-bold border border-slate-700/40 bg-slate-800/40 text-slate-300">
-                              {req.duration} Duration
+                              {req.status === 'Reported Fault' ? '⚠️ Fault Log' : `${req.duration} Duration`}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 text-slate-300 font-medium truncate">
