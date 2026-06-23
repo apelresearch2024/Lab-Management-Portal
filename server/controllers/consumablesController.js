@@ -60,10 +60,13 @@ export async function getConsumables(req, res) {
   }
 }
 
+// 2. REQUEST CONSUMABLES
 export async function requestConsumables(req, res) {
   const { requests, scholarName } = req.body;
+
   try {
     const sheets = await getSheetsInstance();
+
     const currentData = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Consumables!A2:A',
@@ -71,22 +74,29 @@ export async function requestConsumables(req, res) {
     const startingSrNo = (currentData.data.values || []).length + 1;
 
     const rowsToAppend = requests.map((item, idx) => [
-      startingSrNo + idx,
-      item.name || item.componentName || 'Unknown Item',
-      item.quantity || 1,
-      0,
-      item.cost || item.unitCost || 'N/A',
-      'Pending Approval',
-      '', '', '',
-      scholarName,
-      item.remark || '', item.partNo || '', item.description || '', item.manufacturer || '', item.package || '', item.purchaseLink || ''
+      startingSrNo + idx,                               // A: Sr No.
+      item.name || item.componentName || 'Unknown Item', // B: Name of Item
+      item.quantity || 1,                               // C: Quantity
+      0,                                                // D: Leftover Qty
+      item.cost || item.unitCost || 'N/A',              // E: Approx/Unit Cost
+      'Pending Approval',                               // F: Status
+      '',                                               // G: Approval Date
+      '',                                               // H: Order Date
+      '',                                               // I: Receive Date
+      scholarName,                                      // J: Requested By
+      item.remark || '',                                // K: Remarks
+      item.partNo || '',                                // L: Part No
+      item.description || '',                           // M: Description
+      item.manufacturer || '',                          // N: Manufacturer
+      item.package || '',                               // O: Package
+      item.purchaseLink || ''                           // P: Purchase Link
     ]);
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Consumables!A2',
       valueInputOption: 'USER_ENTERED',
-      resource: { values: [rowsToAppend] },
+      resource: { values: rowsToAppend }, 
     });
 
     const totalItems = requests.length;
