@@ -1,40 +1,31 @@
 import express from 'express';
-import nodemailer from 'nodemailer';
 import { getSheetsInstance, SPREADSHEET_ID } from '../config/googleSheets.js';
 import { authenticateToken } from '../middleware/authMiddleWare.js';
 
 const router = express.Router();
 
-
-// EMAIL UTILITY CONFIGURATION
-const transporter = nodemailer.createTransport({
-  service: 'gmail', 
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  }
-});
-
 const sendEmailNotification = async (toEmail, subject, textContent) => {
   if (!toEmail) return;
   try {
-    await transporter.sendMail({
-      from: `"Lab Portal Notification" <${process.env.LAB_EMAIL_USER}>`,
-      to: toEmail,
-      subject: subject,
-      text: textContent,
+    const response = await fetch(process.env.EMAIL_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: toEmail,
+        subject: subject,
+        htmlBody: `<p style="font-family: sans-serif; white-space: pre-line; line-height: 1.6; color: #333;">${textContent}</p>`
+      })
     });
-    console.log(`Email successfully dispatched to ${toEmail}`);
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    console.log(`Email successfully dispatched via Google Relay to ${toEmail}`);
   } catch (error) {
-    console.error(`Failed to send email to ${toEmail}:`, error.message);
+    console.error(`Failed to send email to ${toEmail} via Relay:`, error.message);
   }
 };
 
 const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL || 'professor@institution.edu';
 
-
 // 1. GET ALL EQUIPMENTS
-
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
@@ -43,7 +34,6 @@ router.get('/', authenticateToken, async (req, res) => {
       range: 'Equipments!A2:F',
     });
     const rows = response.data.values || [];
-
     const formatted = rows.map(row => ({
       id: row[0] || '—',
       partNo: row[1] || '—',
@@ -52,7 +42,6 @@ router.get('/', authenticateToken, async (req, res) => {
       status: row[4] || 'Available',
       holderEmail: row[5] || ''
     }));
-
     res.json(formatted);
   } catch (error) {
     console.error('ERROR FETCHING EQUIPMENTS MATRIX:', error);
@@ -60,9 +49,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-
 // 2. GET ALL WORKFLOW REQUESTS LOGS
-
 router.get('/requests', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
@@ -71,7 +58,6 @@ router.get('/requests', authenticateToken, async (req, res) => {
       range: 'EquipmentRequests!A2:H',
     });
     const rows = response.data.values || [];
-
     const formattedRequests = rows.map(row => ({
       id: row[0],
       equipmentId: row[1],
@@ -82,7 +68,6 @@ router.get('/requests', authenticateToken, async (req, res) => {
       equipmentHolder: row[6],
       holderEmail: row[7]
     }));
-
     res.json(formattedRequests);
   } catch (error) {
     console.error('ERROR FETCHING EQUIPMENT REQUESTS:', error);
@@ -90,9 +75,7 @@ router.get('/requests', authenticateToken, async (req, res) => {
   }
 });
 
-
-// 3. FILE A NEW ROUTED ASSET REQUEST 
-
+// 3. FILE A NEW ROUTED ASSET REQUEST
 router.post('/request', authenticateToken, async (req, res) => {
   const { equipmentId, duration } = req.body; 
   const { name: requesterName, email: requesterEmail } = req.user;
@@ -103,7 +86,6 @@ router.post('/request', authenticateToken, async (req, res) => {
 
   try {
     const sheets = await getSheetsInstance();
-
     const eqResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2:F',
@@ -125,24 +107,22 @@ router.post('/request', authenticateToken, async (req, res) => {
     let requestStatus = '';
     let responseMessage = '';
 
-    // RULE WORKFLOW ROUTING ENGINE
     if (currentStatus === 'Reported Fault' || currentStatus === 'Maintenance') {
       return res.status(400).json({
         message: `Booking rejected. This item is currently flagged as "${currentStatus}" and cannot accept allocation requests.`
       });
     }
+
     if (currentStatus === 'Available') {
       if (duration === 'Short') {
         requestStatus = 'Approved';
         responseMessage = `Short duration request processed. Equipment "${equipmentId}" is now allocated to you.`;
-
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
           range: `Equipments!D${eqSheetRowNumber}:F${eqSheetRowNumber}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [[requesterName, 'In Use', requesterEmail]] }
         });
-
         await sendEmailNotification(
           requesterEmail,
           `Asset Request Auto-Approved: ${equipmentId}`,
@@ -151,7 +131,6 @@ router.post('/request', authenticateToken, async (req, res) => {
       } else {
         requestStatus = 'Pending Professor Approval';
         responseMessage = `Long duration request filed. Awaiting Professor authorization.`;
-
         await sendEmailNotification(
           PROFESSOR_EMAIL,
           `Action Required: Long-Term Allocation Request - ${equipmentId}`,
@@ -161,7 +140,6 @@ router.post('/request', authenticateToken, async (req, res) => {
     } else {
       requestStatus = 'Pending Holder Approval';
       responseMessage = `Asset is currently held by ${currentHolder}. Request routed to their active queue for clearance.`;
-
       await sendEmailNotification(
         holderEmail,
         `Action Required: Asset Transfer Request - ${equipmentId}`,
@@ -170,14 +148,7 @@ router.post('/request', authenticateToken, async (req, res) => {
     }
 
     const newRequestRow = [
-      requestId,
-      equipmentId,
-      requesterName,
-      requesterEmail,
-      duration,
-      requestStatus,
-      currentHolder || 'None (Pool)',
-      holderEmail || ''
+      requestId, equipmentId, requesterName, requesterEmail, duration, requestStatus, currentHolder || 'None (Pool)', holderEmail || ''
     ];
 
     await sheets.spreadsheets.values.append({
@@ -194,13 +165,11 @@ router.post('/request', authenticateToken, async (req, res) => {
   }
 });
 
-
-// 4. ACTION PROCESSOR 
-
+// 4. ACTION PROCESSOR
 router.put('/requests/:id/action', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { action } = req.body; // 'approve' or 'reject'
-  const { name: actorName, email: actorEmail, role: actorRole } = req.user;
+  const { action } = req.body; 
+  const { name: actorName, role: actorRole } = req.user;
 
   if (!action || !['approve', 'reject'].includes(action)) {
     return res.status(400).json({ message: 'Invalid pipeline action type execution requested.' });
@@ -208,7 +177,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
 
   try {
     const sheets = await getSheetsInstance();
-
     const reqResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'EquipmentRequests!A2:H',
@@ -248,7 +216,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
 
       if (action === 'reject') {
         updatedStatus = 'Rejected by Holder';
-
         await sendEmailNotification(
           requesterEmail,
           `Asset Transfer Declined: ${equipmentId}`,
@@ -256,16 +223,13 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
         );
       } else if (action === 'approve') {
         if (duration === 'Short') {
-          
           updatedStatus = 'Approved';
-
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `Equipments!D${eqSheetRowNumber}:F${eqSheetRowNumber}`,
             valueInputOption: 'USER_ENTERED',
             resource: { values: [[requesterName, 'In Use', requesterEmail]] }
           });
-
           await sendEmailNotification(
             requesterEmail,
             `Asset Request Approved: ${equipmentId}`,
@@ -273,7 +237,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
           );
         } else {
           updatedStatus = 'Pending Professor Approval';
-
           await sendEmailNotification(
             PROFESSOR_EMAIL,
             `Action Required: Sequential Transfer Request - ${equipmentId}`,
@@ -281,7 +244,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
           );
         }
       }
-
     } else if (currentStatus === 'Pending Professor Approval') {
       if (actorRole !== 'Professor') {
         return res.status(403).json({ message: 'Access Denied. Only professors can validate this decision step.' });
@@ -289,7 +251,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
 
       if (action === 'reject') {
         updatedStatus = 'Rejected by Professor';
-
         await sendEmailNotification(
           requesterEmail,
           `Asset Request Rejected: ${equipmentId}`,
@@ -297,14 +258,12 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
         );
       } else if (action === 'approve') {
         updatedStatus = 'Approved';
-
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
           range: `Equipments!D${eqSheetRowNumber}:F${eqSheetRowNumber}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [[requesterName, 'In Use', requesterEmail]] }
         });
-
         await sendEmailNotification(
           requesterEmail,
           `Asset Request Fully Approved: ${equipmentId}`,
@@ -329,28 +288,17 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
   }
 });
 
-
-// 5. REGISTER NEW EQUIPMENT 
-
+// 5. REGISTER NEW EQUIPMENT
 router.post('/', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') {
-    return res.status(403).json({
-      message: 'Access denied. Only professors are permitted to catalog new lab equipment assets.'
-    });
+    return res.status(403).json({ message: 'Access denied. Only professors are permitted to catalog new lab equipment assets.' });
   }
-
   const { id, partNo, name } = req.body;
-
-  if (!id || id.trim() === '') {
-    return res.status(400).json({ message: 'Equipment No asset entry is mandatory.' });
-  }
-  if (!name || name.trim() === '') {
-    return res.status(400).json({ message: 'Product Description field is mandatory.' });
-  }
+  if (!id || id.trim() === '') return res.status(400).json({ message: 'Equipment No asset entry is mandatory.' });
+  if (!name || name.trim() === '') return res.status(400).json({ message: 'Product Description field is mandatory.' });
 
   try {
     const sheets = await getSheetsInstance();
-
     const idCheck = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2:A',
@@ -358,58 +306,39 @@ router.post('/', authenticateToken, async (req, res) => {
     const rows = idCheck.data.values || [];
     const idExists = rows.some(row => row[0]?.toString().trim().toLowerCase() === id.trim().toLowerCase());
 
-    if (idExists) {
-      return res.status(400).json({ message: `Equipment No "${id}" already exists in the registry pool.` });
-    }
+    if (idExists) return res.status(400).json({ message: `Equipment No "${id}" already exists.` });
 
-    const newEquipmentRow = [
-      id.trim(),
-      partNo ? partNo.trim() : '—',
-      name.trim(),
-      '',
-      'Available',
-      ''
-    ];
-
+    const newEquipmentRow = [id.trim(), partNo ? partNo.trim() : '—', name.trim(), '', 'Available', ''];
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2',
       valueInputOption: 'USER_ENTERED',
       resource: { values: [newEquipmentRow] },
     });
-
-    res.json({ success: true, message: `Equipment "${id}" successfully registered to public pool.` });
+    res.json({ success: true, message: `Equipment "${id}" successfully registered.` });
   } catch (error) {
     console.error('EQUIPMENT APPEND ERROR:', error);
-    res.status(500).json({ message: 'Failed writing asset cell records to cloud spreadsheet.' });
+    res.status(500).json({ message: 'Failed writing asset cell records.' });
   }
 });
 
-
-// 6. MUTATE EQUIPMENT STATUS 
-
+// 6. MUTATE EQUIPMENT STATUS
 router.put('/status', authenticateToken, async (req, res) => {
   const { id, status } = req.body;
   const { name: scholarName, email: scholarEmail } = req.user;
 
-  if (!id || !status) {
-    return res.status(400).json({ message: 'Missing equipment ID or target status parameters.' });
-  }
+  if (!id || !status) return res.status(400).json({ message: 'Missing parameters.' });
 
   try {
     const sheets = await getSheetsInstance();
-
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2:F',
     });
-
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex(row => row[0]?.toString().trim() === id.toString().trim());
 
-    if (rowIndex === -1) {
-      return res.status(404).json({ message: 'Requested equipment asset could not be found.' });
-    }
+    if (rowIndex === -1) return res.status(404).json({ message: 'Asset not found.' });
 
     const existingRow = rows[rowIndex];
     const currentHolderName = existingRow[3] || '';
@@ -423,107 +352,74 @@ router.put('/status', authenticateToken, async (req, res) => {
       updatedEmail = scholarEmail;
     } else if (status === 'Available') {
       if (currentHolderName !== scholarName && req.user.role !== 'Professor') {
-        return res.status(403).json({ message: 'Unauthorized! You cannot release equipment held by another scholar.' });
+        return res.status(403).json({ message: 'Unauthorized release action.' });
       }
-      updatedHolder = '';
-      updatedEmail = '';
     } else if (status === 'Reported Fault') {
       if (currentHolderName !== scholarName && req.user.role !== 'Professor') {
-        return res.status(403).json({ message: 'Unauthorized! Only the active custodian can report a fault on this item.' });
+        return res.status(403).json({ message: 'Unauthorized fault report.' });
       }
-
       updatedHolder = currentHolderName;
       updatedEmail = existingRow[5] || '';
       const itemDescription = existingRow[2] || 'Unknown Item';
       await sendEmailNotification(
         PROFESSOR_EMAIL,
         `⚠️ Emergency: Fault Reported on Equipment No. ${id}`,
-        `Respected Sir,\n\nScholar "${scholarName}" has reported an operational fault on asset "${id}" (${itemDescription}).\n\nThe asset status has been moved automatically to "Reported Fault". Please review this item in your portal dashboard to move it into formal "Maintenance".`
+        `Respected Sir,\n\nScholar "${scholarName}" has reported an operational fault on asset "${id}" (${itemDescription}).\n\nThe asset status has been moved automatically to "Reported Fault".`
       );
-
     } else if (status === 'Maintenance') {
-      if (req.user.role !== 'Professor') {
-        return res.status(403).json({ message: 'Access Denied. Only professors are permitted to transition gear into Maintenance mode.' });
-      }
-
+      if (req.user.role !== 'Professor') return res.status(403).json({ message: 'Access Denied.' });
       updatedHolder = currentHolderName;
       updatedEmail = existingRow[5] || '';
-    } else {
-      return res.status(400).json({ message: 'Invalid status type requested.' });
     }
-
-    const updateRange = `Equipments!D${sheetRowNumber}:F${sheetRowNumber}`;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: updateRange,
+      range: `Equipments!D${sheetRowNumber}:F${sheetRowNumber}`,
       valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [[updatedHolder, status, updatedEmail]]
-      }
+      resource: { values: [[updatedHolder, status, updatedEmail]] }
     });
-
-    res.json({ success: true, message: `Asset status updated successfully to ${status}` });
+    res.json({ success: true, message: `Asset status updated to ${status}` });
   } catch (error) {
-    console.error('STATUS UPDATE ERROR:', error);
-    res.status(500).json({ message: 'Failed mutating equipment cells on remote spreadsheet.' });
+    console.error(error);
+    res.status(500).json({ message: 'Failed mutating equipment cells.' });
   }
 });
 
-
-// 7. DECOMMISSION / REMOVE EQUIPMENT 
-
+// 7. DECOMMISSION EQUIPMENT
 router.delete('/:id', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'Professor') {
-    return res.status(403).json({
-      message: 'Access Denied. Only professors possess the authorization to remove lab equipment.'
-    });
-  }
-
+  if (req.user.role !== 'Professor') return res.status(403).json({ message: 'Access Denied.' });
   const { id } = req.params;
 
   try {
     const sheets = await getSheetsInstance();
-
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2:A',
     });
-
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex(row => row[0]?.toString().trim() === id.trim());
 
-    if (rowIndex === -1) {
-      return res.status(404).json({ message: 'Target equipment record not found in registry.' });
-    }
+    if (rowIndex === -1) return res.status(404).json({ message: 'Record not found.' });
 
     const targetSheetRowIndex = rowIndex + 1;
-
     const spreadsheetMetadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
     const matchSheet = spreadsheetMetadata.data.sheets.find(s => s.properties.title === 'Equipments');
     const sheetId = matchSheet ? matchSheet.properties.sheetId : 0;
+
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
       resource: {
-        requests: [
-          {
-            deleteDimension: {
-              range: {
-                sheetId: sheetId,
-                dimension: 'ROWS',
-                startIndex: targetSheetRowIndex,
-                endIndex: targetSheetRowIndex + 1
-              }
-            }
+        requests: [{
+          deleteDimension: {
+            range: { sheetId: sheetId, dimension: 'ROWS', startIndex: targetSheetRowIndex, endIndex: targetSheetRowIndex + 1 }
           }
-        ]
+        }]
       }
     });
-
     res.json({ success: true, message: `Equipment No "${id}" removed permanently.` });
   } catch (error) {
-    console.error('EQUIPMENT REMOVAL ERROR:', error);
-    res.status(500).json({ message: 'Failed deleting structural asset records from cloud sheet.' });
+    console.error(error);
+    res.status(500).json({ message: 'Failed deleting asset records.' });
   }
 });
 
