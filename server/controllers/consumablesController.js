@@ -1,26 +1,32 @@
 import { getSheetsInstance, SPREADSHEET_ID } from '../config/googleSheets.js';
-import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  }
-});
 const sendEmailNotification = async (toEmail, subject, textContent) => {
   if (!toEmail) return;
   try {
-    await transporter.sendMail({
-      from: `"Lab Portal Notification" <${process.env.LAB_EMAIL_USER}>`,
-      to: toEmail,
-      subject: subject,
-      text: textContent,
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'Lab Portal Notification <onboarding@resend.dev>',
+        to: toEmail,
+        subject: subject,
+        html: `<p style="font-family: sans-serif; white-space: pre-line; line-height: 1.6; color: #333;">${textContent}</p>`
+      })
     });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.message || response.statusText);
+    }
+    console.log(`🚀 Automated alert routed via Resend API to ${toEmail}`);
   } catch (error) {
-    console.error(`Failed to send email to ${toEmail}:`, error.message);
+    console.error(`❌ Failed to send email to ${toEmail} via Resend:`, error.message);
   }
 };
+
 const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL || 'professor@institution.edu';
 
 // 1. GET ALL CONSUMABLES 
@@ -41,22 +47,22 @@ export async function getConsumables(req, res) {
       return {
         srNo: row[0] || '—',
         name: nameVal,
-        componentName: nameVal,                // Map to both keys to protect layout
+        componentName: nameVal,                
         quantity: parseInt(row[2]) || 0,
         leftoverQty: parseInt(row[3]) || 0,
         cost: costVal,
-        unitCost: costVal,                     // Map to both keys to protect layout
+        unitCost: costVal,                     
         status: row[5] || 'Pending Approval',
         approvalDate: row[6] || '',
         orderDate: row[7] || '',
         receiveDate: row[8] || '',
         requestedBy: row[9] || 'Unknown Scholar',
-        remark: row[10] || '',                  // Column K
-        partNo: row[11] || '',                  // Column L
-        description: row[12] || '',             // Column M
-        manufacturer: row[13] || '',            // Column N
-        package: row[14] || '',                 // Column O
-        purchaseLink: row[15] || ''             // Column P
+        remark: row[10] || '',                  
+        partNo: row[11] || '',                  
+        description: row[12] || '',             
+        manufacturer: row[13] || '',            
+        package: row[14] || '',                 
+        purchaseLink: row[15] || ''             
       };
     });
 
@@ -66,7 +72,6 @@ export async function getConsumables(req, res) {
     res.status(500).json({ message: 'Failed retrieving spreadsheet inventory matrix.' });
   }
 }
-
 
 // 2. REQUEST CONSUMABLES
 export async function requestConsumables(req, res) {
@@ -82,22 +87,22 @@ export async function requestConsumables(req, res) {
     const startingSrNo = (currentData.data.values || []).length + 1;
 
     const rowsToAppend = requests.map((item, idx) => [
-      startingSrNo + idx,                               // A: Sr No.
-      item.name || item.componentName || 'Unknown Item', // B: Name of Item
-      item.quantity || 1,                               // C: Quantity
-      0,                                                // D: Leftover Qty
-      item.cost || item.unitCost || 'N/A',            // E: Approx/Unit Cost
-      'Pending Approval',                             // F: Status
-      '',                                             // G: Approval Date
-      '',                                             // H: Order Date
-      '',                                             // I: Receive Date
-      scholarName,                                    // J: Requested By
-      item.remark || '',                              // K: Remarks
-      item.partNo || '',                              // L: Part No
-      item.description || '',                         // M: Description
-      item.manufacturer || '',                        // N: Manufacturer
-      item.package || '',                             // O: Package
-      item.purchaseLink || ''                         // P: Purchase Link
+      startingSrNo + idx,                               
+      item.name || item.componentName || 'Unknown Item', 
+      item.quantity || 1,                               
+      0,                                                
+      item.cost || item.unitCost || 'N/A',            
+      'Pending Approval',                             
+      '',                                             
+      '',                                             
+      '',                                             
+      scholarName,                                    
+      item.remark || '',                              
+      item.partNo || '',                              
+      item.description || '',                         
+      item.manufacturer || '',                        
+      item.package || '',                             
+      item.purchaseLink || ''                         
     ]);
 
     await sheets.spreadsheets.values.append({
@@ -118,7 +123,6 @@ export async function requestConsumables(req, res) {
   }
 }
 
-
 // 3. MUTATE CONSUMABLE STATUS 
 export async function updateConsumableStatus(req, res) {
   const { srNos, updateType, dateValue, leftoverQty, itemRemarks } = req.body;
@@ -132,7 +136,6 @@ export async function updateConsumableStatus(req, res) {
       range: 'Consumables!A2:K',
     });
     const rows = response.data.values || [];
-
     const updateOperations = [];
 
     for (const srNo of srNos) {

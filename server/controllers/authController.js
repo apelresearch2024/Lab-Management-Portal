@@ -1,23 +1,13 @@
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
 import { getSheetsInstance, SPREADSHEET_ID } from '../config/googleSheets.js';
 
 const otpCache = new Map();
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 const determineRole = (email) => {
   return email.toLowerCase() === process.env.PROFESSOR_EMAIL.toLowerCase() 
     ? 'Professor' 
     : 'Scholar';
 };
-
 
 // 1. REQUEST OTP ENDPOINT
 export async function requestOTP(req, res) {
@@ -42,23 +32,34 @@ export async function requestOTP(req, res) {
 
     otpCache.set(email.toLowerCase(), { otp: generatedOTP, expiresAt: expiryTime });
 
-    await transporter.sendMail({
-      from: `"EE Lab Portal" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Your Lab Portal Verification Login OTP',
-      html: `<h3>EE Lab Management Portal</h3>
-             <p>Use the following secure OTP passcode to access your dashboard profile:</p>
-             <h1 style="color: #2563eb; letter-spacing: 2px;">${generatedOTP}</h1>
-             <p>This passkey is valid for 5 minutes.</p>`,
+    const resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'EE Lab Portal <onboarding@resend.dev>', 
+        to: email,
+        subject: 'Your Lab Portal Verification Login OTP',
+        html: `<h3>EE Lab Management Portal</h3>
+               <p>Use the following secure OTP passcode to access your dashboard profile:</p>
+               <h1 style="color: #2563eb; letter-spacing: 2px;">${generatedOTP}</h1>
+               <p>This passkey is valid for 5 minutes.</p>`
+      })
     });
 
-    res.json({ success: true, message: 'OTP dispatched successfully.' });
+    if (!resendResponse.ok) {
+      const errorData = await resendResponse.json();
+      throw new Error(`Resend Error: ${errorData.message || resendResponse.statusText}`);
+    }
+
+    res.json({ success: true, message: 'OTP dispatched successfully via Resend.' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to process OTP.' });
+    console.error('❌ ERROR IN REQUEST_OTP:', error);
+    res.status(500).json({ message: 'Failed to process OTP.', error: error.message });
   }
 }
-
 
 // 2. VERIFY OTP & GENERATE JWT
 export async function verifyOTP(req, res) {
@@ -86,7 +87,6 @@ export async function verifyOTP(req, res) {
     });
 
     const rows = response.data.values || [];
-    
     const userRow = rows.find(row => row[1] && row[1].toLowerCase() === email.toLowerCase());
 
     if (!userRow) {
@@ -104,7 +104,6 @@ export async function verifyOTP(req, res) {
     };
 
     const secretKey = process.env.JWT_SECRET || 'temporary_emergency_secret_key_2026';
-
     const accessToken = jwt.sign(userPayload, secretKey, { expiresIn: '24h' });
 
     res.json({
@@ -118,18 +117,13 @@ export async function verifyOTP(req, res) {
   }
 }
 
-
 // 3. ADMIN ONLY: ADD NEW SCHOLAR PROFILE
 export async function addScholar(req, res) {
   const { scholarName, scholarEmail } = req.body;
 
   try {
     const sheets = await getSheetsInstance();
-    
-    const newScholarRow = [
-      scholarName,
-      scholarEmail.toLowerCase()
-    ];
+    const newScholarRow = [scholarName, scholarEmail.toLowerCase()];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
