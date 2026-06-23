@@ -1,6 +1,6 @@
 import express from 'express';
 import { requestOTP, verifyOTP, addScholar } from '../controllers/authController.js';
-import { authenticateToken, requireProfessor } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireProfessor } from '../middleware/authMiddleWare.js';
 
 const router = express.Router();
 
