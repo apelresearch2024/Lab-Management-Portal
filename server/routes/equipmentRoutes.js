@@ -322,12 +322,12 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// 6. MUTATE EQUIPMENT STATUS
+// 6. MUTATE EQUIPMENT STATUS & ROUTE FAULTS TO REQUEST CENTER
 router.put('/status', authenticateToken, async (req, res) => {
   const { id, status } = req.body;
   const { name: scholarName, email: scholarEmail } = req.user;
 
-  if (!id || !status) return res.status(400).json({ message: 'Missing parameters.' });
+  if (!id || !status) return res.status(400).json({ message: 'Missing required parameters.' });
 
   try {
     const sheets = await getSheetsInstance();
@@ -355,36 +355,64 @@ router.put('/status', authenticateToken, async (req, res) => {
         return res.status(403).json({ message: 'Unauthorized release action.' });
       }
     } else if (status === 'Reported Fault') {
+      // Security: Only the current holder or the Professor can report a fault
       if (currentHolderName !== scholarName && req.user.role !== 'Professor') {
         return res.status(403).json({ message: 'Unauthorized fault report.' });
       }
+      
       updatedHolder = currentHolderName;
       updatedEmail = existingRow[5] || '';
       const itemDescription = existingRow[2] || 'Unknown Item';
+
+      // 1. Send Emergency Notification via Google Relay
       await sendEmailNotification(
         PROFESSOR_EMAIL,
         `⚠️ Emergency: Fault Reported on Equipment No. ${id}`,
         `Respected Sir,\n\nScholar "${scholarName}" has reported an operational fault on asset "${id}" (${itemDescription}).\n\nThe asset status has been moved automatically to "Reported Fault".`
       );
+
+      // 2. ✅ NEW: Append this Fault report directly to the Request Center sheet
+      const faultRequestId = `FAULT_${Date.now()}`;
+      const faultRequestRow = [
+        faultRequestId,                 // Column A: ID
+        id.trim(),                      // Column B: Equipment ID
+        scholarName,                    // Column C: Requested/Reported By
+        scholarEmail,                   // Column D: Reporter Email
+        'Fault Report',                 // Column E: Duration Field (Flagged as Fault)
+        'Reported Fault',               // Column F: Status Field
+        currentHolderName || 'None',    // Column G: Equipment Holder
+        existingRow[5] || ''            // Column H: Holder Email
+      ];
+
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'EquipmentRequests!A2',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [faultRequestRow] },
+      });
+      
+      console.log(`🔧 Fault log ${faultRequestId} logged into Request Center.`);
+
     } else if (status === 'Maintenance') {
       if (req.user.role !== 'Professor') return res.status(403).json({ message: 'Access Denied.' });
       updatedHolder = currentHolderName;
       updatedEmail = existingRow[5] || '';
     }
 
+    // Update main equipment row entry
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `Equipments!D${sheetRowNumber}:F${sheetRowNumber}`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: [[updatedHolder, status, updatedEmail]] }
     });
-    res.json({ success: true, message: `Asset status updated to ${status}` });
+
+    res.json({ success: true, message: `Asset status updated to ${status} and logged in tracking workflow.` });
   } catch (error) {
-    console.error(error);
+    console.error('ERROR MUTATING STATUS:', error);
     res.status(500).json({ message: 'Failed mutating equipment cells.' });
   }
 });
-
 // 7. DECOMMISSION EQUIPMENT
 router.delete('/:id', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') return res.status(403).json({ message: 'Access Denied.' });
