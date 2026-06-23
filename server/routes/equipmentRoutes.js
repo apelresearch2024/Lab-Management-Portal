@@ -5,18 +5,16 @@ import { authenticateToken } from '../middleware/authMiddleWare.js';
 
 const router = express.Router();
 
-// ==========================================
-// EMAIL UTILITY CONFIGURATION (NODEMAILER)
-// ==========================================
+
+// EMAIL UTILITY CONFIGURATION
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Change to your preferred email provider service or SMTP settings
+  service: 'gmail', 
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   }
 });
 
-// Helper function to send standardized email alerts safely
 const sendEmailNotification = async (toEmail, subject, textContent) => {
   if (!toEmail) return;
   try {
@@ -32,12 +30,11 @@ const sendEmailNotification = async (toEmail, subject, textContent) => {
   }
 };
 
-// Professor fallback email if not retrieved dynamically
 const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL || 'professor@institution.edu';
 
-// ==========================================
-// 1. GET ALL EQUIPMENTS (READ MATRIX)
-// ==========================================
+
+// 1. GET ALL EQUIPMENTS
+
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
@@ -63,9 +60,9 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
+
 // 2. GET ALL WORKFLOW REQUESTS LOGS
-// ==========================================
+
 router.get('/requests', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
@@ -93,11 +90,11 @@ router.get('/requests', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 3. FILE A NEW ROUTED ASSET REQUEST (WORKFLOW ENGINE)
-// ==========================================
+
+// 3. FILE A NEW ROUTED ASSET REQUEST 
+
 router.post('/request', authenticateToken, async (req, res) => {
-  const { equipmentId, duration } = req.body; // duration is 'Short' or 'Long'
+  const { equipmentId, duration } = req.body; 
   const { name: requesterName, email: requesterEmail } = req.user;
 
   if (!equipmentId || !duration) {
@@ -197,9 +194,9 @@ router.post('/request', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 4. ACTION PROCESSOR (APPROVE / REJECT FOR MULTI-TIER WORKFLOWS)
-// ==========================================
+
+// 4. ACTION PROCESSOR 
+
 router.put('/requests/:id/action', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { action } = req.body; // 'approve' or 'reject'
@@ -252,7 +249,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
       if (action === 'reject') {
         updatedStatus = 'Rejected by Holder';
 
-        // Notify requester
         await sendEmailNotification(
           requesterEmail,
           `Asset Transfer Declined: ${equipmentId}`,
@@ -260,7 +256,7 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
         );
       } else if (action === 'approve') {
         if (duration === 'Short') {
-          // Short duration bypasses the Professor step completely
+          
           updatedStatus = 'Approved';
 
           await sheets.spreadsheets.values.update({
@@ -276,10 +272,8 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
             `Hello ${requesterName},\n\nGreat news! ${equipmentHolder} has authorized the transfer of "${equipmentId}". Since this is a short duration framework, you are now registered as the active custodian.`
           );
         } else {
-          // Long duration requires forwarding to the Professor step
           updatedStatus = 'Pending Professor Approval';
 
-          // Notify Professor
           await sendEmailNotification(
             PROFESSOR_EMAIL,
             `Action Required: Sequential Transfer Request - ${equipmentId}`,
@@ -304,7 +298,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
       } else if (action === 'approve') {
         updatedStatus = 'Approved';
 
-        // Perform main hardware master sheet swap
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
           range: `Equipments!D${eqSheetRowNumber}:F${eqSheetRowNumber}`,
@@ -322,7 +315,6 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'This request workflow loop is already closed or finalized.' });
     }
 
-    // Update status cell in EquipmentRequests
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `EquipmentRequests!F${reqSheetRowNumber}`,
@@ -337,9 +329,9 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 5. REGISTER NEW EQUIPMENT (PROFESSOR-ONLY WRITE)
-// ==========================================
+
+// 5. REGISTER NEW EQUIPMENT 
+
 router.post('/', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') {
     return res.status(403).json({
@@ -393,9 +385,9 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 6. MUTATE EQUIPMENT STATUS (QUICK RELEASE BY ACTIVE CUSTODIAN)
-// ==========================================
+
+// 6. MUTATE EQUIPMENT STATUS 
+
 router.put('/status', authenticateToken, async (req, res) => {
   const { id, status } = req.body;
   const { name: scholarName, email: scholarEmail } = req.user;
@@ -478,9 +470,9 @@ router.put('/status', authenticateToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 7. DECOMMISSION / REMOVE EQUIPMENT (PROFESSOR ONLY)
-// ==========================================
+
+// 7. DECOMMISSION / REMOVE EQUIPMENT 
+
 router.delete('/:id', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') {
     return res.status(403).json({
