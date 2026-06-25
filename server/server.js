@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import consumablesRoutes from './routes/consumableRoutes.js';
 import equipmentRoutes from './routes/equipmentRoutes.js';
+import stockRouter from './routes/stockRoutes.js';
 dotenv.config();
 
 const app = express();
@@ -44,6 +45,7 @@ app.use(express.json());
 app.use('/api', authRoutes);                  
 app.use('/api/consumables', consumablesRoutes); 
 app.use('/api/equipments', equipmentRoutes);
+app.use('/api/stocks', stockRouter);
 // Start Application Server
 app.listen(PORT, () => {
   console.log(`🚀 Clean Modular Server listening on http://localhost:${PORT}`);

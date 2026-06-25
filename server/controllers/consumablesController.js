@@ -19,7 +19,7 @@ const sendEmailNotification = async (toEmail, subject, textContent) => {
   }
 };
 
-const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL || 'professor@institution.edu';
+const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL ;
 
 export async function getConsumables(req, res) {
   try {
@@ -60,7 +60,6 @@ export async function getConsumables(req, res) {
   }
 }
 
-// 2. REQUEST CONSUMABLES
 export async function requestConsumables(req, res) {
   const { requests, scholarName } = req.body;
 
@@ -101,7 +100,7 @@ export async function requestConsumables(req, res) {
 
     const totalItems = requests.length;
     const emailSubject = `🚨 New Consumables Purchase Request Batch Submitted by ${scholarName}`;
-    const emailBody = `Respected Sir,\n\nScholar "${scholarName}" has uploaded a new batch containing ${totalItems} consumable item request(s).\n\nPlease log into the Lab Portal dashboard to review.\n\nBest regards,\nLab Inventory Engine`;
+    const emailBody = `Respected Sir,\n\nScholar "${scholarName}" has uploaded a new batch containing ${totalItems} consumable item request(s).\n\nPlease log into the Lab Portal dashboard to review.\n\nBest regards`;
 
     await sendEmailNotification(PROFESSOR_EMAIL, emailSubject, emailBody);
     res.json({ success: true, message: 'Requests loaded into database.' });

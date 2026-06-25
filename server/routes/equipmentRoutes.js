@@ -2,7 +2,7 @@ import express from 'express';
 import { getSheetsInstance, SPREADSHEET_ID } from '../config/googleSheets.js';
 import { authenticateToken } from '../middleware/authMiddleWare.js';
 
-const router = express.Router();
+const equipmentRouter = express.Router();
 
 const sendEmailNotification = async (toEmail, subject, textContent) => {
   if (!toEmail) return;
@@ -26,7 +26,7 @@ const sendEmailNotification = async (toEmail, subject, textContent) => {
 const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL || 'professor@institution.edu';
 
 // 1. GET ALL EQUIPMENTS
-router.get('/', authenticateToken, async (req, res) => {
+equipmentRouter.get('/', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
@@ -50,7 +50,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // 2. GET ALL WORKFLOW REQUESTS LOGS
-router.get('/requests', authenticateToken, async (req, res) => {
+equipmentRouter.get('/requests', authenticateToken, async (req, res) => {
   try {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
@@ -76,7 +76,7 @@ router.get('/requests', authenticateToken, async (req, res) => {
 });
 
 // 3. FILE A NEW ROUTED ASSET REQUEST
-router.post('/request', authenticateToken, async (req, res) => {
+equipmentRouter.post('/request', authenticateToken, async (req, res) => {
   const { equipmentId, duration } = req.body; 
   const { name: requesterName, email: requesterEmail } = req.user;
 
@@ -166,7 +166,7 @@ router.post('/request', authenticateToken, async (req, res) => {
 });
 
 // 4. ACTION PROCESSOR
-router.put('/requests/:id/action', authenticateToken, async (req, res) => {
+equipmentRouter.put('/requests/:id/action', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { action } = req.body; 
   const { name: actorName, role: actorRole } = req.user;
@@ -289,7 +289,7 @@ router.put('/requests/:id/action', authenticateToken, async (req, res) => {
 });
 
 // 5. REGISTER NEW EQUIPMENT
-router.post('/', authenticateToken, async (req, res) => {
+equipmentRouter.post('/', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') {
     return res.status(403).json({ message: 'Access denied. Only professors are permitted to catalog new lab equipment assets.' });
   }
@@ -323,7 +323,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // 6. MUTATE EQUIPMENT STATUS & ROUTE FAULTS TO REQUEST CENTER
-router.put('/status', authenticateToken, async (req, res) => {
+equipmentRouter.put('/status', authenticateToken, async (req, res) => {
   const { id, status } = req.body;
   const { name: scholarName, email: scholarEmail } = req.user;
 
@@ -371,7 +371,6 @@ router.put('/status', authenticateToken, async (req, res) => {
         `Respected Sir,\n\nScholar "${scholarName}" has reported an operational fault on asset "${id}" (${itemDescription}).\n\nThe asset status has been moved automatically to "Reported Fault".`
       );
 
-      // 2. ✅ NEW: Append this Fault report directly to the Request Center sheet
       const faultRequestId = `FAULT_${Date.now()}`;
       const faultRequestRow = [
         faultRequestId,                 // Column A: ID
@@ -414,7 +413,7 @@ router.put('/status', authenticateToken, async (req, res) => {
   }
 });
 // 7. DECOMMISSION EQUIPMENT
-router.delete('/:id', authenticateToken, async (req, res) => {
+equipmentRouter.delete('/:id', authenticateToken, async (req, res) => {
   if (req.user.role !== 'Professor') return res.status(403).json({ message: 'Access Denied.' });
   const { id } = req.params;
 
@@ -451,4 +450,4 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-export default router;
+export default equipmentRouter;

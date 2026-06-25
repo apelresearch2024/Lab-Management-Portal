@@ -4,6 +4,7 @@ import Consumables from './components/Consumable';
 import ManageScholars from './components/ManageScholars';
 import Navbar from './components/Navbar';
 import Equipments from './components/Equipments';
+import Stocks from './components/Stocks';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ScrollToTop from './components/ScrollToTop';
@@ -12,7 +13,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(() => {
     const savedTab = sessionStorage.getItem('labPortal_main_activeTab');
-    const validTabs = ['consumables', 'scholars', 'equipments'];
+    const validTabs = ['consumables', 'scholars', 'equipments', 'stocks'];
     return validTabs.includes(savedTab) ? savedTab : 'consumables';
   });
 
@@ -100,6 +101,7 @@ function App() {
         {activeTab === 'consumables' && <Consumables user={user} />}
         {activeTab === 'scholars' && user.role === 'Professor' && <ManageScholars />}
         {activeTab === 'equipments' && <Equipments user={user} />}
+        {activeTab === 'stocks' && <Stocks user={user}/>}
 
         <ToastContainer
           position="top-center"

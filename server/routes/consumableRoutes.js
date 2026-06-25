@@ -2,11 +2,11 @@ import express from 'express';
 import { getConsumables, requestConsumables, updateConsumableStatus} from '../controllers/consumablesController.js';
 import { authenticateToken } from '../middleware/authMiddleWare.js'; 
 
-const router = express.Router();
+const consumableRouter = express.Router();
 
 // Route pathways pointing directly to our controller functions
-router.get('/', authenticateToken, getConsumables);
-router.post('/request', authenticateToken, requestConsumables);
-router.put('/update-status', authenticateToken, updateConsumableStatus);
+consumableRouter.get('/', authenticateToken, getConsumables);
+consumableRouter.post('/request', authenticateToken, requestConsumables);
+consumableRouter.put('/update-status', authenticateToken, updateConsumableStatus);
 
-export default router;
+export default consumableRouter;
