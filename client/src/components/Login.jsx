@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../config';
 function Login({ onLoginSuccess }) {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -7,7 +7,23 @@ function Login({ onLoginSuccess }) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [serverWarming, setServerWarming] = useState(false);
+  useEffect(() => {
+    const wakeUpServer = async () => {
+      try {
+        const timeoutId = setTimeout(() => setServerWarming(true), 2000);
 
+        await fetch(`${API_BASE_URL}/`);
+
+        clearTimeout(timeoutId);
+        setServerWarming(false);
+      } catch (err) {
+        console.log("Server wakeup ping initiated...");
+      }
+    };
+
+    wakeUpServer();
+  }, [API_BASE_URL]);
   const handleRequestOTP = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -23,7 +39,7 @@ function Login({ onLoginSuccess }) {
       const data = await response.json();
 
       if (response.ok) {
-        setStep(2); 
+        setStep(2);
       } else {
         setErrorMessage(data.message || 'Verification initialization failed.');
       }
@@ -103,7 +119,7 @@ function Login({ onLoginSuccess }) {
             </button>
           </form>
         ) : (
-          
+
           /* STEP 2: INPUT VALIDATION OTP DIGITS ROUTINE */
           <form onSubmit={handleVerifyOTP} className="space-y-5">
             <div>
