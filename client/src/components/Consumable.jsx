@@ -573,7 +573,7 @@ function Consumables({ user }) {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const rawData = XLSX.utils.sheet_to_json(ws);
+        const rawData = XLSX.utils.sheet_to_json(ws, { range: 1 });
 
         if (rawData.length === 0) {
           toast.warning('The uploaded Excel sheet appears to be empty.');
