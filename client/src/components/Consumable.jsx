@@ -11,7 +11,8 @@ function Consumables({ user }) {
 
   const [filterMode, setFilterMode] = useState(() => {
     const savedFilter = sessionStorage.getItem('labPortal_consumables_filterMode');
-    return (savedFilter === 'pending' || savedFilter === 'all') ? savedFilter : 'pending';
+    const validModes = ['pending', 'all', 'my-surplus', 'lab-stocks'];
+    return validModes.includes(savedFilter) ? savedFilter : 'pending';
   });
   const [expandedScholars, setExpandedScholars] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
@@ -195,13 +196,13 @@ function Consumables({ user }) {
     sessionStorage.setItem('labPortal_consumables_filterMode', filterMode);
   }, [filterMode]);
   useEffect(() => {
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth'
-  });
-}, [viewTab,filterMode]);
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }, [viewTab, filterMode]);
   const handleLifecycleUpdate = async (srNosArray, updateType, extraData = {}) => {
-    console.log(updateType)
+
     setActionLoading(true);
     try {
       const relevantRemarks = {};
@@ -225,7 +226,6 @@ function Consumables({ user }) {
           ...extraData
         })
       });
-      console.log(response)
       if (response.ok) {
         toast.success(`Inventory successfully updated: ${updateType}`);
         await fetchInventory();
@@ -243,13 +243,106 @@ function Consumables({ user }) {
   const LeftoverInputToast = ({ item, closeToast, onSave }) => {
     const [qty, setQty] = useState('');
 
+    const maxAvailable = parseInt(item.deliveredQty) || parseInt(item.quantity) || 0;
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      const parsedUsedQty = parseInt(qty);
+
+      if (isNaN(parsedUsedQty) || parsedUsedQty < 0 || parsedUsedQty > maxAvailable) {
+        toast.error(`Invalid! Please input a used quantity between 0 and ${maxAvailable}.`, {
+          toastId: 'validation-guard-heavy'
+        });
+        return;
+      }
+
+      onSave(parsedUsedQty);
+      closeToast();
+    };
+
+    return (
+      <div className="p-3 w-full text-slate-200 relative">
+        <button
+          type="button"
+          onClick={closeToast}
+          className="absolute top-1.5 right-1.5 text-slate-400 hover:text-white transition-colors text-xl font-bold p-1 leading-none z-10"
+          aria-label="Close notification"
+        >
+          &times;
+        </button>
+
+        <div className="flex items-center gap-3 mb-3 pb-2 border-b border-slate-800/60 pr-6">
+          <span className="text-xl">📊</span>
+          <div>
+            <h4 className="text-sm font-bold text-white tracking-wider uppercase">
+              Report Component Usage
+            </h4>
+            <p className="text-[11px] text-slate-500 font-mono mt-0.5">Asset Reference ID: #{item.srNo}</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-slate-300 mb-4 leading-relaxed">
+          Specify how many units were **Used/Consumed** for <strong className="text-purple-400 font-semibold">"{item.componentName || item.name}"</strong>.
+          <span className="block text-xs text-slate-400 font-medium mt-1 bg-slate-950/40 p-2 rounded border border-slate-800/40">
+            📦 Total Received/Delivered: <strong className="text-white font-mono">{maxAvailable}</strong> units
+          </span>
+        </p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-4">
+          <label className="block flex-1 sm:flex-initial">
+            <span className="sr-only">Used Quantity Units</span>
+            <input
+              type="number"
+              min="0"
+              max={maxAvailable}
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              placeholder="Quantity Used"
+              className="bg-slate-950 border-2 border-slate-800 rounded-xl px-4 py-2.5 text-sm w-full sm:w-36 text-white font-mono font-bold focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+              autoFocus
+            />
+          </label>
+          <button
+            type="submit"
+            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-purple-900/20 transform active:scale-[0.98] transition-all"
+          >
+            Submit Consumption
+          </button>
+        </form>
+      </div>
+    );
+  };
+
+  const triggerLeftoverPrompt = (item) => {
+    toast(
+      ({ closeToast }) => (
+        <LeftoverInputToast
+          item={item}
+          closeToast={closeToast}
+          onSave={(parsedUsedQty) =>
+            handleLifecycleUpdate([item.srNo], 'MarkLeftover', { usedQty: parsedUsedQty })
+          }
+        />
+      ),
+      {
+        autoClose: false,
+        closeOnClick: false,
+        draggable: false,
+        icon: false,
+        className: '!w-full !max-w-[550px] !bg-[#0b132b] border-2 border-slate-800 rounded-2xl shadow-2xl p-2 my-2'
+      }
+    );
+  };
+  const ReceiveInputToast = ({ item, closeToast, onSave }) => {
+    const [qty, setQty] = useState(item.quantity || '');
+
     const handleSubmit = (e) => {
       e.preventDefault();
       const parsedQty = parseInt(qty);
 
-      if (isNaN(parsedQty) || parsedQty <= 0 || parsedQty > item.quantity) {
-        toast.error(`Invalid! Please input a value between 1 and ${item.quantity}.`, {
-          toastId: 'validation-guard-heavy'
+      if (isNaN(parsedQty) || parsedQty < 0) {
+        toast.error("Invalid entry. Please enter a valid positive number.", {
+          toastId: 'validation-guard-receive'
         });
         return;
       }
@@ -270,55 +363,54 @@ function Consumables({ user }) {
         </button>
 
         <div className="flex items-center gap-3 mb-3 pb-2 border-b border-slate-800/60 pr-6">
-          <span className="text-xl">📦</span>
+          <span className="text-xl">📥</span>
           <div>
             <h4 className="text-sm font-bold text-white tracking-wider uppercase">
-              Inventory Surplus Declaration
+              Receive Delivered Components
             </h4>
             <p className="text-[11px] text-slate-500 font-mono mt-0.5">Asset Reference ID: #{item.srNo}</p>
           </div>
         </div>
 
         <p className="text-sm text-slate-300 mb-4 leading-relaxed">
-          Specify remaining allocation details for <strong className="text-purple-400 font-semibold">"{item.componentName || item.name}"</strong>.
+          Specify the total number of components actually delivered for <strong className="text-indigo-400 font-semibold">"{item.componentName || item.name}"</strong>.
           <span className="block text-xs text-slate-400 font-medium mt-1 bg-slate-950/40 p-2 rounded border border-slate-800/40">
-            ⚠️ Maximum trackable units allowed by purchase log: <strong className="text-white font-mono">{item.quantity}</strong>
+            📦 Expected order log log allocation: <strong className="text-white font-mono">{item.deliveredQty}</strong> units
           </span>
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-4">
           <label className="block flex-1 sm:flex-initial">
-            <span className="sr-only">Surplus Quantity Units</span>
+            <span className="sr-only">Received Quantity Units</span>
             <input
               type="number"
-              min="1"
-              max={item.quantity}
+              min="0"
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               placeholder="Qty units"
-              className="bg-slate-950 border-2 border-slate-800 rounded-xl px-4 py-2.5 text-sm w-full sm:w-36 text-white font-mono font-bold focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+              className="bg-slate-950 border-2 border-slate-800 rounded-xl px-4 py-2.5 text-sm w-full sm:w-36 text-white font-mono font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               autoFocus
             />
           </label>
           <button
             type="submit"
-            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-purple-900/20 transform active:scale-[0.98] transition-all"
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-indigo-900/20 transform active:scale-[0.98] transition-all"
           >
-            Submit Return To Surplus Pool
+            Confirm Delivery Receipt
           </button>
         </form>
       </div>
     );
   };
 
-  const triggerLeftoverPrompt = (item) => {
+  const triggerReceivePrompt = (item) => {
     toast(
       ({ closeToast }) => (
-        <LeftoverInputToast
+        <ReceiveInputToast
           item={item}
           closeToast={closeToast}
           onSave={(parsedQty) =>
-            handleLifecycleUpdate([item.srNo], 'MarkLeftover', { leftoverQty: parsedQty })
+            handleLifecycleUpdate([item.srNo], 'Receive', { deliveredQty: parsedQty })
           }
         />
       ),
@@ -331,7 +423,6 @@ function Consumables({ user }) {
       }
     );
   };
-
   const DisburseInputToast = ({ item, closeToast, onSave }) => {
     const [qty, setQty] = useState('');
 
@@ -340,7 +431,7 @@ function Consumables({ user }) {
       const parsedQty = parseInt(qty);
 
       if (isNaN(parsedQty) || parsedQty <= 0 || parsedQty > parseInt(item.leftoverQty)) {
-        toast.error(`Invalid amount! Input a configuration value between 1 and ${item.leftoverQty}.`, {
+        toast.error(`Invalid amount! Please input a value between 1 and ${item.leftoverQty}.`, {
           toastId: 'validation-guard-disburse'
         });
         return;
@@ -365,29 +456,29 @@ function Consumables({ user }) {
           <span className="text-xl">📤</span>
           <div>
             <h4 className="text-sm font-bold text-white tracking-wider uppercase">
-              Disburse Stock Units
+              Consume From Surplus Pool
             </h4>
             <p className="text-[11px] text-slate-500 font-mono mt-0.5">Asset Sheet Row: #{item.srNo}</p>
           </div>
         </div>
 
         <p className="text-sm text-slate-300 mb-4 leading-relaxed">
-          Specify the total number of units given away from <strong className="text-purple-400 font-semibold">"{item.componentName || item.name}"</strong>.
+          Specify how many units from the surplus stock pool were just consumed for <strong className="text-purple-400 font-semibold">"{item.componentName || item.name}"</strong>.
           <span className="block text-xs text-slate-400 font-medium mt-1 bg-slate-950/40 p-2 rounded border border-slate-800/40">
-            📦 Available inventory allocation pool: <strong className="text-white font-mono">{item.leftoverQty}</strong> units
+            ⚠️ Remaining Pool Stock: <strong className="text-white font-mono">{item.leftoverQty}</strong> units
           </span>
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-4">
           <label className="block flex-1 sm:flex-initial">
-            <span className="sr-only">Disbursed Quantity Units</span>
+            <span className="sr-only">Quantity Used</span>
             <input
               type="number"
               min="1"
-              max={item.leftoverQty}
+              max={parseInt(item.leftoverQty)}
               value={qty}
               onChange={(e) => setQty(e.target.value)}
-              placeholder="Qty given"
+              placeholder="Quantity Used"
               className="bg-slate-950 border-2 border-slate-800 rounded-xl px-4 py-2.5 text-sm w-full sm:w-36 text-white font-mono font-bold focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
               autoFocus
             />
@@ -396,7 +487,7 @@ function Consumables({ user }) {
             type="submit"
             className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-purple-900/20 transform active:scale-[0.98] transition-all"
           >
-            Confirm Distribution
+            Log Consumption
           </button>
         </form>
       </div>
@@ -432,24 +523,29 @@ function Consumables({ user }) {
   const getGroupedData = () => {
     let processedList = [...items];
 
-    if (user?.role === 'Professor') {
-      if (filterMode === 'pending') {
+    if (filterMode === 'pending') {
+      if (user?.role === 'Professor') {
         processedList = processedList.filter(
           item => item.status === 'Pending Approval' || item.status === 'Approved'
         );
-      }
-    } else if (user?.role === 'Scholar') {
-      if (filterMode === 'pending') {
+      } else if (user?.role === 'Scholar') {
         processedList = processedList.filter(
           item => item.requestedBy === user?.name && (item.status === 'Ordered' || item.status === 'Approved')
         );
-      } else {
-        processedList = processedList.filter(
-          item => item.requestedBy === user?.name
-        );
       }
+    } else if (filterMode === 'my-surplus') {
+      processedList = processedList.filter(
+        item => item.status === 'Surplus/Unused' && item.requestedBy === user?.name
+      );
+    } else if (filterMode === 'lab-stocks') {
+      processedList = processedList.filter(
+        item => (item.status === 'Received' || item.status === 'Surplus/Unused') && parseInt(item.leftoverQty || item.quantity) > 0
+      );
+    } else if (filterMode === 'all' && user?.role === 'Scholar') {
+      processedList = processedList.filter(
+        item => item.requestedBy === user?.name
+      );
     }
-
     const searchLower = dashboardSearch.toLowerCase().trim();
     if (searchLower) {
       processedList = processedList.filter(item =>
@@ -635,25 +731,31 @@ function Consumables({ user }) {
             📁 All History
           </button>
 
-          <button
-            onClick={() => setViewTab('library')}
-            className={`flex-1 sm:flex-none text-center whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-all ${viewTab === 'library'
+          {user?.role !== 'Professor' && (<button
+            onClick={() => { setFilterMode('my-surplus'); setViewTab('dashboard'); }}
+            className={`flex-1 sm:flex-none text-center whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-all ${filterMode === 'my-surplus'
               ? 'bg-purple-600 text-white shadow-sm'
               : 'text-slate-400 hover:text-white'
               }`}
           >
-            🏛️ Surplus Library
+            🏛️ My Surplus Library
+          </button>)}
+          <button
+            onClick={() => { setFilterMode('lab-stocks'); setViewTab('dashboard'); }}
+            className={`flex-1 sm:flex-none text-center whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-all ${viewTab === 'dashboard' && filterMode === 'lab-stocks' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+          >
+            🏛️ Lab Available Stock
           </button>
         </div>
 
         {/* Global Dashboard Search Field Input Container */}
-        {viewTab === 'dashboard' && filterMode === 'all' && (
+        {viewTab === 'dashboard' && (filterMode === 'all' || filterMode === 'my-surplus' || filterMode === 'lab-stocks') && (
           <div className="w-full sm:w-64">
             <input
               type="text"
               value={dashboardSearch}
               onChange={(e) => setDashboardSearch(e.target.value)}
-              placeholder="🔍 Search history records..."
+              placeholder="🔍 Search components..."
               className="w-full bg-slate-950 border border-slate-800 text-xs text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-500"
             />
           </div>
@@ -868,7 +970,7 @@ function Consumables({ user }) {
                     <div className="p-2 sm:p-0">
                       {/* Mobile Adaptive Collapsed Cards Layout */}
                       <div className="block lg:hidden divide-y divide-slate-800/40">
-                        {paginatedScholarRecords.map((item) => {
+                        {paginatedScholarRecords.map((item, index) => {
                           const surplusMatch = surplusLibraryItems.find(sItem => {
                             const sName = (sItem.componentName || sItem.name || '').toLowerCase().trim();
                             const iName = (item.componentName || item.name || '').toLowerCase().trim();
@@ -943,7 +1045,7 @@ function Consumables({ user }) {
                                 {user?.role === 'Scholar' && (
                                   <div className="w-full">
                                     {item.status === 'Approved' && <button onClick={() => handleLifecycleUpdate([item.srNo], 'Order')} className="w-full py-2 bg-amber-600 text-white font-bold text-xs rounded transition-colors">🧾 Log Purchase</button>}
-                                    {item.status === 'Ordered' && <button onClick={() => handleLifecycleUpdate([item.srNo], 'Receive')} className="w-full py-2 bg-indigo-600 text-white font-bold text-xs rounded transition-colors">✓ Mark Received</button>}
+                                    {item.status === 'Ordered' && <button onClick={() => triggerReceivePrompt(item)} className="w-full py-2 bg-indigo-600 text-white font-bold text-xs rounded transition-colors">✓ Mark Received</button>}
                                     {item.status === 'Received' && item.requestedBy === user?.name && <button onClick={() => triggerLeftoverPrompt(item)} className="w-full py-2 bg-purple-600 text-white font-bold text-xs rounded transition-colors">Mark Excess Stock</button>}
                                     {item.status === 'Surplus/Unused' && item.requestedBy === user?.name && parseInt(item.leftoverQty) > 0 && (
                                       <button onClick={() => triggerDisbursePrompt(item)} className="w-full py-2 bg-purple-600/30 text-purple-400 font-bold text-xs rounded border border-purple-500/20 transition-all">Disburse Units 📦</button>
@@ -967,6 +1069,7 @@ function Consumables({ user }) {
                               <th className="px-4 py-3.5" style={{ width: '350px' }}>Description</th>
                               <th className="px-4 py-3.5" style={{ width: '200px' }}>Manufacturer</th>
                               <th className="px-4 py-3.5" style={{ width: '120px' }}>Qty Ordered</th>
+                              <th className="px-4 py-3 font-semibold text-slate-400 text-emerald-400">Qty Delivered </th>
                               <th className="px-4 py-3.5" style={{ width: '120px' }}>Qty Surplus</th>
                               <th className="px-4 py-3.5" style={{ width: '150px' }}>Package</th>
                               <th className="px-4 py-3.5" style={{ width: '250px' }}>Purchase Link</th>
@@ -980,7 +1083,7 @@ function Consumables({ user }) {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/40 text-xs">
-                            {paginatedScholarRecords.map((item) => {
+                            {paginatedScholarRecords.map((item, index) => {
                               const surplusMatch = surplusLibraryItems.find(sItem => {
                                 const sName = (sItem.componentName || sItem.name || '').toLowerCase().trim();
                                 const iName = (item.componentName || item.name || '').toLowerCase().trim();
@@ -989,7 +1092,7 @@ function Consumables({ user }) {
 
                               return (
                                 <tr key={item.srNo} className="hover:bg-slate-800/10 transition-colors">
-                                  <td className="px-4 py-4 font-mono text-slate-500">{item.srNo}</td>
+                                  <td className="px-4 py-4 font-mono text-slate-500">{filterMode === 'lab-stocks' ? (index + 1) : item.srNo}</td>
                                   <td className="px-4 py-4">
                                     <div className="font-semibold text-white leading-snug">{item.componentName || item.name}</div>
                                     {user?.role === 'Professor' && item.status === 'Pending Approval' && surplusMatch && (
@@ -1004,6 +1107,9 @@ function Consumables({ user }) {
                                   </td>
                                   <td className="px-4 py-4 text-slate-300 text-[11px]">{item.manufacturer || '—'}</td>
                                   <td className="px-4 py-4 font-mono text-blue-400 font-bold text-sm">{item.quantity}</td>
+                                  <td className="px-4 py-4 font-mono text-emerald-400 font-bold bg-emerald-950/10">
+                                    {item.deliveredQty !== undefined && item.deliveredQty !== '' ? item.deliveredQty : '—'}
+                                  </td>
                                   <td className="px-4 py-4 font-mono text-purple-400 font-bold text-sm">
                                     {item.status === 'Surplus/Unused' ? item.leftoverQty : '0'}
                                   </td>
@@ -1071,7 +1177,7 @@ function Consumables({ user }) {
                                       {user?.role === 'Scholar' && (
                                         <>
                                           {item.status === 'Approved' && <button onClick={() => handleLifecycleUpdate([item.srNo], 'Order')} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold w-full">🧾 Log Order</button>}
-                                          {item.status === 'Ordered' && <button onClick={() => handleLifecycleUpdate([item.srNo], 'Receive')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold w-full">✓ Mark Received</button>}
+                                          {item.status === 'Ordered' && <button onClick={() => triggerReceivePrompt(item)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold w-full">✓ Mark Used</button>}
                                           {item.status === 'Received' && item.requestedBy === user?.name && <button onClick={() => triggerLeftoverPrompt(item)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-bold w-full">Mark Leftover</button>}
                                           {item.status === 'Surplus/Unused' && (
                                             <div className="flex flex-col gap-1 items-center w-full">

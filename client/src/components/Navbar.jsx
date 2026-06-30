@@ -5,7 +5,6 @@ function Navbar({ user, activeTab, setActiveTab, onLogout }) {
 
   const navItems = [
     { id: 'consumables', label: 'Consumables Order List' },
-    { id: 'stocks', label: 'Stock' },
     { id: 'equipments', label: 'Equipment Inventory Directory' },
     ...(user?.role === 'Professor' ? [{ id: 'scholars', label: 'Add Scholars' }] : [])
   ];

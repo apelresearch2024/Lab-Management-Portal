@@ -19,14 +19,14 @@ const sendEmailNotification = async (toEmail, subject, textContent) => {
   }
 };
 
-const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL ;
+const PROFESSOR_EMAIL = process.env.PROFESSOR_EMAIL;
 
 export async function getConsumables(req, res) {
   try {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Consumables!A2:P',
+      range: 'Consumables!A2:Q',
     });
     const rows = response.data.values || [];
     const structuredInventory = rows.map((row) => {
@@ -50,7 +50,8 @@ export async function getConsumables(req, res) {
         description: row[12] || '',
         manufacturer: row[13] || '',
         package: row[14] || '',
-        purchaseLink: row[15] || ''
+        purchaseLink: row[15] || '',
+        deliveredQty: (row[16] !== undefined && row[16] !== '') ? parseInt(row[16]) : '—',
       };
     });
     res.json(structuredInventory);
@@ -88,14 +89,15 @@ export async function requestConsumables(req, res) {
       item.description || '',                           // M: Description
       item.manufacturer || '',                          // N: Manufacturer
       item.package || '',                               // O: Package
-      item.purchaseLink || ''                           // P: Purchase Link
+      item.purchaseLink || '',                          // P: Purchase Link
+      '',                                               //Q: Delivered Quantity
     ]);
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Consumables!A2',
       valueInputOption: 'USER_ENTERED',
-      resource: { values: rowsToAppend }, 
+      resource: { values: rowsToAppend },
     });
 
     const totalItems = requests.length;
@@ -111,28 +113,37 @@ export async function requestConsumables(req, res) {
 }
 
 export async function updateConsumableStatus(req, res) {
-  const { srNos, updateType, dateValue, leftoverQty, itemRemarks } = req.body;
+  const { srNos, updateType, dateValue, usedQty, itemRemarks, deliveredQty } = req.body;
   const userRole = req.user.role;
 
   try {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Consumables!A2:K',
+      range: 'Consumables!A2:Q',
     });
     const rows = response.data.values || [];
     const updateOperations = [];
 
     for (const srNo of srNos) {
-      const rowIndex = rows.findIndex(row => row[0]?.toString().trim() === srNo?.toString().trim()) + 2;
-      if (rowIndex === 1) continue;
+      // Find the exact row matching the sequence reference number
+      const matchIndex = rows.findIndex(row => row[0]?.toString().trim() === srNo?.toString().trim());
+      if (matchIndex === -1) continue;
+
+      const rowIndex = matchIndex + 2; // Range shifts accounting for index alignment
+      const currentRow = rows[matchIndex];
+
+      // Handle item remarks persistence updates
       if (itemRemarks && itemRemarks[srNo] !== undefined) {
         updateOperations.push({ range: `Consumables!K${rowIndex}`, values: [[itemRemarks[srNo]]] });
       }
+
       if (updateType === 'Reject') {
         updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Rejected']] });
         continue;
       }
+
+      // Professor Rules Engine
       if (userRole === 'Professor') {
         if (updateType === 'Approve') {
           updateOperations.push({ range: `Consumables!F${rowIndex}:G${rowIndex}`, values: [['Approved', dateValue]] });
@@ -140,21 +151,49 @@ export async function updateConsumableStatus(req, res) {
           updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Ordered']] });
           updateOperations.push({ range: `Consumables!H${rowIndex}`, values: [[dateValue]] });
         }
-      } else if (userRole === 'Scholar') {
+      } 
+      
+      // Scholar Rules Engine
+      else if (userRole === 'Scholar') {
         if (updateType === 'Order') {
           updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Ordered']] });
           updateOperations.push({ range: `Consumables!H${rowIndex}`, values: [[dateValue]] });
         } else if (updateType === 'Receive') {
           updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Received']] });
           updateOperations.push({ range: `Consumables!I${rowIndex}`, values: [[dateValue]] });
-        } else if (updateType === 'MarkLeftover') {
-          updateOperations.push({ range: `Consumables!D${rowIndex}`, values: [[leftoverQty]] });
-          updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Surplus/Unused']] });
-        } else if (updateType === 'UpdateLeftoverQty') {
-          updateOperations.push({ range: `Consumables!D${rowIndex}`, values: [[leftoverQty]] });
-          if (parseInt(leftoverQty) === 0) {
-            updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [['Distributed']] });
-          }
+          
+          const finalDeliveredQty = parseInt(deliveredQty) || 0;
+          updateOperations.push({ range: `Consumables!Q${rowIndex}`, values: [[finalDeliveredQty]] });
+          
+          // Initial receipt sets remaining stock pool equivalent to delivered pool
+          updateOperations.push({ range: `Consumables!D${rowIndex}`, values: [[finalDeliveredQty]] });
+        } 
+        
+        // Handling the initial component consumption declaration
+        else if (updateType === 'MarkLeftover') {
+          // Delivered quantity is index 16 (Column Q), fallback to requested quantity index 2 (Column C)
+          const totalDelivered = parseInt(currentRow[16]) || parseInt(currentRow[2]) || 0;
+          const totalUsed = parseInt(usedQty) || 0;
+          
+          // Equation: Delivered Quantity - Used Quantity = Leftover Quantity
+          const computedLeftover = Math.max(0, totalDelivered - totalUsed);
+
+          updateOperations.push({ range: `Consumables!D${rowIndex}`, values: [[computedLeftover]] });
+          const newStatus = computedLeftover === 0 ? 'Distributed' : 'Surplus/Unused';
+          updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [[newStatus]] });
+        } 
+        
+        // Deducting further usage values from the existing surplus pool
+        else if (updateType === 'UpdateLeftoverQty') {
+          const currentLeftover = parseInt(currentRow[3]) || 0; // Index 3 corresponds to Column D (Leftover Qty)
+          const batchUsed = parseInt(usedQty) || 0;
+          
+          // Deduct newly used units from the remaining pool
+          const computedLeftover = Math.max(0, currentLeftover - batchUsed);
+
+          updateOperations.push({ range: `Consumables!D${rowIndex}`, values: [[computedLeftover]] });
+          const newStatus = computedLeftover === 0 ? 'Distributed' : 'Surplus/Unused';
+          updateOperations.push({ range: `Consumables!F${rowIndex}`, values: [[newStatus]] });
         }
       }
     }
@@ -168,9 +207,9 @@ export async function updateConsumableStatus(req, res) {
       resource: { valueInputOption: 'USER_ENTERED', data: updateOperations },
     });
 
-    res.json({ success: true, message: 'Database states synchronized.' });
+    res.json({ success: true, message: 'Inventory balances calculated and synchronized.' });
   } catch (error) {
-    console.error('ERROR UPDATING CONSUMABLE LIFECYCLE MATRIX:', error);
-    res.status(500).json({ message: 'Failed modifying values.' });
+    console.error('ERROR UPDATING CONSUMABLE LIFECYCLE:', error);
+    res.status(500).json({ message: 'Internal server error processing inventory matrix.' });
   }
 }

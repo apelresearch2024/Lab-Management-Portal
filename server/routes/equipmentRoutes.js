@@ -1,9 +1,24 @@
 import express from 'express';
 import { getSheetsInstance, SPREADSHEET_ID } from '../config/googleSheets.js';
+import { google } from 'googleapis';
+import { Readable } from 'stream';  
 import { authenticateToken } from '../middleware/authMiddleWare.js';
-
+import multer from 'multer'
 const equipmentRouter = express.Router();
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage }).single('descriptionPdf');
+const getDriveInstance = async () => {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground' 
+  );
 
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+  });
+  return google.drive({ version: 'v3', auth: oauth2Client });
+};
 const sendEmailNotification = async (toEmail, subject, textContent) => {
   if (!toEmail) return;
   try {
@@ -31,7 +46,7 @@ equipmentRouter.get('/', authenticateToken, async (req, res) => {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Equipments!A2:F',
+      range: 'Equipments!A2:H',
     });
     const rows = response.data.values || [];
     const formatted = rows.map(row => ({
@@ -40,7 +55,9 @@ equipmentRouter.get('/', authenticateToken, async (req, res) => {
       name: row[2] || 'Unknown Item',
       currentHolder: row[3] || '',
       status: row[4] || 'Available',
-      holderEmail: row[5] || ''
+      holderEmail: row[5] || '',
+      category: row[6] || 'Major',
+      pdfLink: row[7] || ''
     }));
     res.json(formatted);
   } catch (error) {
@@ -88,7 +105,7 @@ equipmentRouter.post('/request', authenticateToken, async (req, res) => {
     const sheets = await getSheetsInstance();
     const eqResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Equipments!A2:F',
+      range: 'Equipments!A2:H',
     });
     const eqRows = eqResponse.data.values || [];
     const eqRowIndex = eqRows.findIndex(row => row[0]?.toString().trim() === equipmentId.trim());
@@ -201,7 +218,7 @@ equipmentRouter.put('/requests/:id/action', authenticateToken, async (req, res) 
 
     const eqResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Equipments!A2:F',
+      range: 'Equipments!A2:H',
     });
     const eqRows = eqResponse.data.values || [];
     const eqRowIndex = eqRows.findIndex(row => row[0]?.toString().trim() === equipmentId.trim());
@@ -289,11 +306,11 @@ equipmentRouter.put('/requests/:id/action', authenticateToken, async (req, res) 
 });
 
 // 5. REGISTER NEW EQUIPMENT
-equipmentRouter.post('/', authenticateToken, async (req, res) => {
+equipmentRouter.post('/', authenticateToken, upload, async (req, res) => {
   if (req.user.role !== 'Professor') {
     return res.status(403).json({ message: 'Access denied. Only professors are permitted to catalog new lab equipment assets.' });
   }
-  const { id, partNo, name } = req.body;
+  const { id, partNo, name, category } = req.body;
   if (!id || id.trim() === '') return res.status(400).json({ message: 'Equipment No asset entry is mandatory.' });
   if (!name || name.trim() === '') return res.status(400).json({ message: 'Product Description field is mandatory.' });
 
@@ -307,8 +324,37 @@ equipmentRouter.post('/', authenticateToken, async (req, res) => {
     const idExists = rows.some(row => row[0]?.toString().trim().toLowerCase() === id.trim().toLowerCase());
 
     if (idExists) return res.status(400).json({ message: `Equipment No "${id}" already exists.` });
+    let pdfUrl = '';
 
-    const newEquipmentRow = [id.trim(), partNo ? partNo.trim() : '—', name.trim(), '', 'Available', ''];
+    if (req.file) {
+      const drive = await getDriveInstance();
+      
+      const bufferStream = new Readable();
+      bufferStream.push(req.file.buffer);
+      bufferStream.push(null);
+
+      const driveResponse = await drive.files.create({
+        requestBody: {
+          name: `${id.trim()}_Manual.pdf`,
+          parents: [process.env.GOOGLE_DRIVE_FOLDER_ID], 
+          mimeType: 'application/pdf',
+        },
+        media: {
+          mimeType: 'application/pdf',
+          body: bufferStream,
+        },
+        fields: 'id, webViewLink',
+      });
+      await drive.permissions.create({
+        fileId: driveResponse.data.id,
+        requestBody: {
+          role: 'reader', // Specifies read-only view access
+          type: 'anyone', // Changes access level to "Anyone with the link"
+        },
+      });
+      pdfUrl = driveResponse.data.webViewLink || '';
+    }
+    const newEquipmentRow = [id.trim(), partNo ? partNo.trim() : '—', name.trim(), '', 'Available', '', category || 'Major', pdfUrl];
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'Equipments!A2',
@@ -333,7 +379,7 @@ equipmentRouter.put('/status', authenticateToken, async (req, res) => {
     const sheets = await getSheetsInstance();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Equipments!A2:F',
+      range: 'Equipments!A2:H',
     });
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex(row => row[0]?.toString().trim() === id.toString().trim());
@@ -419,14 +465,33 @@ equipmentRouter.delete('/:id', authenticateToken, async (req, res) => {
 
   try {
     const sheets = await getSheetsInstance();
+    
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Equipments!A2:A',
+      range: 'Equipments!A2:H', 
     });
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex(row => row[0]?.toString().trim() === id.trim());
 
     if (rowIndex === -1) return res.status(404).json({ message: 'Record not found.' });
+
+    const targetRow = rows[rowIndex];
+    const pdfUrl = targetRow[7]; 
+
+    if (pdfUrl && pdfUrl.includes('/d/')) {
+      const fileIdMatch = pdfUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (fileIdMatch && fileIdMatch[1]) {
+        const fileId = fileIdMatch[1];
+        
+        try {
+          const drive = await getDriveInstance();
+          await drive.files.delete({ fileId: fileId });
+          console.log(`🗑️ Clean Up: File ${fileId} successfully purged from Google Drive.`);
+        } catch (driveErr) {
+          console.error(`⚠️ Drive file delete skipped/failed (likely already deleted):`, driveErr.message);
+        }
+      }
+    }
 
     const targetSheetRowIndex = rowIndex + 1;
     const spreadsheetMetadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
@@ -443,9 +508,10 @@ equipmentRouter.delete('/:id', authenticateToken, async (req, res) => {
         }]
       }
     });
-    res.json({ success: true, message: `Equipment No "${id}" removed permanently.` });
+
+    res.json({ success: true, message: `Equipment No "${id}" and its associated cloud manual removed permanently.` });
   } catch (error) {
-    console.error(error);
+    console.error('DECOMMISSION ERROR:', error);
     res.status(500).json({ message: 'Failed deleting asset records.' });
   }
 });

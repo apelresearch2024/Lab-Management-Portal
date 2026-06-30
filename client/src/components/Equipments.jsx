@@ -14,17 +14,18 @@ function Equipments({ user }) {
   });
 
   const [processingId, setProcessingId] = useState(null);
-
+  const [eqPdf, setEqPdf] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [eqId, setEqId] = useState('');
   const [eqPartNo, setEqPartNo] = useState('');
   const [eqName, setEqName] = useState('');
+  const [categoryTab, setCategoryTab] = useState('Major');
+  const [eqCategory, setEqCategory] = useState('Major');
   const [submitting, setSubmitting] = useState(false);
 
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [targetEquipment, setTargetEquipment] = useState(null);
   const [requestDuration, setRequestDuration] = useState('Short');
-
   const token = localStorage.getItem('labPortalToken');
 
   const checkAuthStatus = (response) => {
@@ -79,18 +80,25 @@ function Equipments({ user }) {
     }
     setSubmitting(true);
     try {
+      const formData = new FormData();
+      formData.append('id', eqId);
+      formData.append('partNo', eqPartNo);
+      formData.append('name', eqName);
+      formData.append('category', eqCategory);
+      if (eqPdf) {
+        formData.append('descriptionPdf', eqPdf);
+      }
       const response = await fetch(`${API_BASE_URL}/api/equipments`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ id: eqId, partNo: eqPartNo, name: eqName })
+        body: formData
       });
 
       if (response.ok) {
         toast.success(`"${eqId}" successfully cataloged into registry!`);
-        setEqId(''); setEqPartNo(''); setEqName('');
+        setEqId(''); setEqPartNo(''); setEqName(''), setEqPdf(null);;
         setShowModal(false);
         fetchInventoryAndRequests();
       } else {
@@ -208,7 +216,7 @@ function Equipments({ user }) {
             <button
               onClick={() => {
                 executeEquipmentRemoval(id);
-                closeToast(); 
+                closeToast();
               }}
               className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm shadow-red-950"
             >
@@ -219,7 +227,7 @@ function Equipments({ user }) {
       ),
       {
         position: "top-center",
-        autoClose: false, 
+        autoClose: false,
         closeOnClick: false,
         draggable: false,
         closeButton: false,
@@ -276,12 +284,17 @@ function Equipments({ user }) {
     }
   };
 
-  const filteredEquipments = equipments.filter(item =>
-    (item.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.partNo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.currentHolder || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredEquipments = equipments.filter(item => {
+    const matchesSearch =
+      (item.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.partNo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.currentHolder || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesCategory = (item.category || 'Major') === categoryTab;
+
+    return matchesSearch && matchesCategory;
+  });
 
   const sortedEquipments = [...filteredEquipments].sort((a, b) => {
     if (a.currentHolder === user?.name && b.currentHolder !== user?.name) return -1;
@@ -344,179 +357,210 @@ function Equipments({ user }) {
         <div className="text-center py-12 text-xs text-slate-400 font-mono">Syncing pipeline registries...</div>
       ) : viewTab === 'registry' ? (
         /* PANEL VIEW 1: CENTRAL INVENTORY REGISTRY GRID */
-        <div className="bg-[#111E43] border border-slate-800/80 rounded-xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[1050px] table-fixed">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-900/50 text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  <th className="px-4 py-3.5 w-[12%]">Equipment No</th>
-                  <th className="px-4 py-3.5 w-[12%]">Part No</th>
-                  <th className="px-4 py-3.5 w-[28%]">Product Description</th>
-                  <th className="px-4 py-3.5 w-[13%]">Status</th>
-                  <th className="px-4 py-3.5 w-[15%]">Current Holder</th>
-                  <th className="px-4 py-3.5 text-center w-[20%]">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40 text-xs align-middle">
-                {sortedEquipments.map((item) => {
-                  const isMyAsset = item.currentHolder === user?.name;
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCategoryTab('Major')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-all ${categoryTab === 'Major'
+                ? 'bg-blue-600/10 text-blue-400 border-blue-500/30 shadow-inner'
+                : 'bg-slate-900/40 text-slate-400 border-slate-800 hover:text-slate-300'}`}
+            >
+              🛠️ Major Equipment
+            </button>
+            <button
+              onClick={() => setCategoryTab('Minor')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-all ${categoryTab === 'Minor'
+                ? 'bg-blue-600/10 text-blue-400 border-blue-500/30 shadow-inner'
+                : 'bg-slate-900/40 text-slate-400 border-slate-800 hover:text-slate-300'}`}
+            >
+              🧰 Minor Equipment
+            </button>
+          </div>
+          <div className="bg-[#111E43] border border-slate-800/80 rounded-xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[1050px] table-fixed">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-900/50 text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                    <th className="px-4 py-3.5 w-[12%]">Equipment No</th>
+                    <th className="px-4 py-3.5 w-[12%]">Part No</th>
+                    <th className="px-4 py-3.5 w-[28%]">Product Description</th>
+                    <th className="px-4 py-3.5 w-[13%]">Status</th>
+                    <th className="px-4 py-3.5 w-[15%]">Current Holder</th>
+                    <th className="px-4 py-3.5 text-center w-[20%]">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/40 text-xs align-middle">
+                  {sortedEquipments.map((item) => {
+                    const isMyAsset = item.currentHolder === user?.name;
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`transition-colors duration-150 ${isMyAsset ? 'bg-blue-500/[0.03] hover:bg-blue-500/[0.07]' : 'hover:bg-slate-800/20'}`}
-                    >
-                      <td className="px-4 py-3.5 font-mono text-white font-semibold whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>{item.id}</span>
-                          {isMyAsset && <span className="text-blue-400 text-xs animate-bounce" title="Your assigned asset">📌</span>}
-                        </div>
-                      </td>
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`transition-colors duration-150 ${isMyAsset ? 'bg-blue-500/[0.03] hover:bg-blue-500/[0.07]' : 'hover:bg-slate-800/20'}`}
+                      >
+                        <td className="px-4 py-3.5 font-mono text-white font-semibold whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.id}</span>
+                            {isMyAsset && <span className="text-blue-400 text-xs animate-bounce" title="Your assigned asset">📌</span>}
+                          </div>
+                        </td>
 
-                      <td className="px-4 py-3.5 font-mono text-slate-300 truncate">
-                        {item.partNo || <span className="text-slate-600 italic font-sans">—</span>}
-                      </td>
+                        <td className="px-4 py-3.5 font-mono text-slate-300 truncate">
+                          {item.partNo || <span className="text-slate-600 italic font-sans">—</span>}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-200 font-medium break-words pr-4">
+                          <div className="flex flex-col gap-1">
+                            <span>{item.name}</span>
+                            {(item.pdfLink || item.webViewLink || item.pdfUrl || item.descriptionPdf) && (
+                              <a
+                                href={item.pdfLink || item.webViewLink || item.pdfUrl || item.descriptionPdf}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 rounded-lg text-[11px] font-bold tracking-wide transition-all duration-150 shadow-sm active:scale-95"
+                              >
+                                📄 View Equipment Manual
+                              </a>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="px-4 py-3.5 text-slate-200 font-medium break-words pr-4">
-                        {item.name}
-                      </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${item.status === 'Available' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                            item.status === 'Reported Fault' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' :
+                              item.status === 'Maintenance' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                                'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            }`}>
+                            {item.status === 'Maintenance' ? '🛠️ Maintenance' : item.status}
+                          </span>
+                        </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${item.status === 'Available' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                          item.status === 'Reported Fault' ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' :
-                            item.status === 'Maintenance' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
-                              'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          }`}>
-                          {item.status === 'Maintenance' ? '🛠️ Maintenance' : item.status}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5 font-semibold text-slate-300 truncate">
-                        {item.status === 'Available' ? (
-                          <span className="text-slate-500 font-normal italic">None (Pool)</span>
-                        ) : (item.status === 'Maintenance' || item.status === 'Reported Fault') ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-slate-400 truncate">{item.currentHolder}</span>
-                            <span className={`text-[9px] font-extrabold uppercase tracking-widest ${item.status === 'Reported Fault' ? 'text-red-400' : 'text-yellow-500'}`}>
-                              ({item.status})
+                        <td className="px-4 py-3.5 font-semibold text-slate-300 truncate">
+                          {item.status === 'Available' ? (
+                            <span className="text-slate-500 font-normal italic">None (Pool)</span>
+                          ) : (item.status === 'Maintenance' || item.status === 'Reported Fault') ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-slate-400 truncate">{item.currentHolder}</span>
+                              <span className={`text-[9px] font-extrabold uppercase tracking-widest ${item.status === 'Reported Fault' ? 'text-red-400' : 'text-yellow-500'}`}>
+                                ({item.status})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className={isMyAsset ? "text-blue-400 font-bold" : ""}>
+                              {item.currentHolder} {isMyAsset && '(You)'}
                             </span>
-                          </div>
-                        ) : (
-                          <span className={isMyAsset ? "text-blue-400 font-bold" : ""}>
-                            {item.currentHolder} {isMyAsset && '(You)'}
-                          </span>
-                        )}
-                      </td>
+                          )}
+                        </td>
 
-                      {/* Dynamic Conditional Action Handling */}
-                      <td className="px-4 py-3.5 text-center">
-                        {user?.role === 'Scholar' ? (
-                          <div className="w-full">
-                            {isMyAsset ? (
-                              (item.status === 'Maintenance' || item.status === 'Reported Fault') ? (
-                                <div className="flex py-1.5 items-center justify-center text-[10px] uppercase tracking-wider font-extrabold text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 rounded-md w-full px-2 text-center">
-                                  🛠️ {item.status === 'Reported Fault' ? 'Reviewing Fault' : 'Under Repair'}
-                                </div>
+                        {/* Dynamic Conditional Action Handling */}
+                        <td className="px-4 py-3.5 text-center">
+                          {user?.role === 'Scholar' ? (
+                            <div className="w-full">
+                              {isMyAsset ? (
+                                (item.status === 'Maintenance' || item.status === 'Reported Fault') ? (
+                                  <div className="flex py-1.5 items-center justify-center text-[10px] uppercase tracking-wider font-extrabold text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 rounded-md w-full px-2 text-center">
+                                    🛠️ {item.status === 'Reported Fault' ? 'Reviewing Fault' : 'Under Repair'}
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-1.5 w-full">
+                                    <button
+                                      disabled={processingId !== null}
+                                      onClick={() => handleUpdateStatus(item.id, 'Available')}
+                                      className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
+                                    >
+                                      Release ✓
+                                    </button>
+                                    <button
+                                      disabled={processingId !== null}
+                                      onClick={() => handleUpdateStatus(item.id, 'Reported Fault')}
+                                      className="py-1.5 px-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-yellow-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
+                                    >
+                                      Fault 🛠️
+                                    </button>
+                                  </div>
+                                )
                               ) : (
-                                <div className="grid grid-cols-2 gap-1.5 w-full">
-                                  <button
-                                    disabled={processingId !== null}
-                                    onClick={() => handleUpdateStatus(item.id, 'Available')}
-                                    className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
-                                  >
-                                    Release ✓
-                                  </button>
-                                  <button
-                                    disabled={processingId !== null}
-                                    onClick={() => handleUpdateStatus(item.id, 'Reported Fault')}
-                                    className="py-1.5 px-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-yellow-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
-                                  >
-                                    Fault 🛠️
-                                  </button>
-                                </div>
-                              )
-                            ) : (
-                              /* NEW LOOKUP INTERCEPTION BLOCK FOR SCHOLARS */
-                              (() => {
-                                const pendingRequest = requests.find(req => 
-                                  req.equipmentId === item.id && 
-                                  (req.status === 'Pending Professor Approval' || req.status === 'Pending Holder Approval')
-                                );
+                                /* NEW LOOKUP INTERCEPTION BLOCK FOR SCHOLARS */
+                                (() => {
+                                  const pendingRequest = requests.find(req =>
+                                    req.equipmentId === item.id &&
+                                    (req.status === 'Pending Professor Approval' || req.status === 'Pending Holder Approval')
+                                  );
 
-                                if (pendingRequest) {
-                                  const isRequestedByMe = pendingRequest.requestedBy === user?.name;
-                                  if (isRequestedByMe) {
-                                    return (
-                                      <div className="py-1.5 w-full px-3 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[11px] font-bold uppercase text-center select-none">
-                                        ⏳ Requested by You
-                                      </div>
-                                    );
-                                  } else {
-                                    return (
-                                      <div className="py-1.5 w-full px-3 bg-slate-800/80 text-slate-400 border border-slate-700/50 rounded-md text-[11px] font-mono text-center truncate select-none" title={`Requested by ${pendingRequest.requestedBy}`}>
-                                        🔒 Req. by {pendingRequest.requestedBy || "Scholar"}
-                                      </div>
-                                    );
+                                  if (pendingRequest) {
+                                    const isRequestedByMe = pendingRequest.requestedBy === user?.name;
+                                    if (isRequestedByMe) {
+                                      return (
+                                        <div className="py-1.5 w-full px-3 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-[11px] font-bold uppercase text-center select-none">
+                                          ⏳ Requested by You
+                                        </div>
+                                      );
+                                    } else {
+                                      return (
+                                        <div className="py-1.5 w-full px-3 bg-slate-800/80 text-slate-400 border border-slate-700/50 rounded-md text-[11px] font-mono text-center truncate select-none" title={`Requested by ${pendingRequest.requestedBy}`}>
+                                          🔒 Req. by {pendingRequest.requestedBy || "Scholar"}
+                                        </div>
+                                      );
+                                    }
                                   }
-                                }
 
-                                return (
-                                  <button
-                                    disabled={item.status === 'Maintenance' || item.status === 'Reported Fault' || processingId !== null}
-                                    onClick={() => { setTargetEquipment(item); setShowRequestModal(true); }}
-                                    className={`py-1.5 w-full px-3 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm flex items-center justify-center whitespace-nowrap ${(item.status === 'Maintenance' || item.status === 'Reported Fault')
-                                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/40 shadow-none'
-                                      : item.status === 'Available' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/20' : 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20'
+                                  return (
+                                    <button
+                                      disabled={item.status === 'Maintenance' || item.status === 'Reported Fault' || processingId !== null}
+                                      onClick={() => { setTargetEquipment(item); setShowRequestModal(true); }}
+                                      className={`py-1.5 w-full px-3 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm flex items-center justify-center whitespace-nowrap ${(item.status === 'Maintenance' || item.status === 'Reported Fault')
+                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/40 shadow-none'
+                                        : item.status === 'Available' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/20' : 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20'
+                                        }`}
+                                    >
+                                      {(item.status === 'Maintenance' || item.status === 'Reported Fault') ? 'Unavailable 🛠️' : item.status === 'Available' ? 'Request 📨' : 'Transfer 🔁'}
+                                    </button>
+                                  );
+                                })()
+                              )}
+                            </div>
+                          ) : user?.role === 'Professor' ? (
+                            <div className="grid grid-cols-2 gap-1.5 w-full">
+                              <button
+                                disabled={processingId !== null}
+                                onClick={() => handleRemoveEquipment(item.id)}
+                                className="py-1.5 px-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
+                              >
+                                Delete ❌
+                              </button>
+
+                              {item.status !== 'Maintenance' ? (
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={() => handleUpdateStatus(item.id, 'Maintenance')}
+                                  className={`py-1.5 px-1.5 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center whitespace-nowrap ${item.status === 'Reported Fault'
+                                    ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20 animate-pulse border border-red-400/40'
+                                    : 'bg-yellow-600 hover:bg-yellow-500 shadow-yellow-900/20'
                                     }`}
-                                  >
-                                    {(item.status === 'Maintenance' || item.status === 'Reported Fault') ? 'Unavailable 🛠️' : item.status === 'Available' ? 'Request 📨' : 'Transfer 🔁'}
-                                  </button>
-                                );
-                              })()
-                            )}
-                          </div>
-                        ) : user?.role === 'Professor' ? (
-                          <div className="grid grid-cols-2 gap-1.5 w-full">
-                            <button
-                              disabled={processingId !== null}
-                              onClick={() => handleRemoveEquipment(item.id)}
-                              className="py-1.5 px-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
-                            >
-                              Delete ❌
-                            </button>
-
-                            {item.status !== 'Maintenance' ? (
-                              <button
-                                disabled={processingId !== null}
-                                onClick={() => handleUpdateStatus(item.id, 'Maintenance')}
-                                className={`py-1.5 px-1.5 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center whitespace-nowrap ${item.status === 'Reported Fault'
-                                  ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20 animate-pulse border border-red-400/40'
-                                  : 'bg-yellow-600 hover:bg-yellow-500 shadow-yellow-900/20'
-                                }`}
-                              >
-                                {item.status === 'Reported Fault' ? 'Approve 🛠️' : 'Maintain 🛠️'}
-                              </button>
-                            ) : (
-                              <button
-                                disabled={processingId !== null}
-                                onClick={() => handleUpdateStatus(item.id, 'Available')}
-                                className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
-                              >
-                                Fix Done ✅
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest bg-slate-900/50 border border-slate-800/60 py-1 px-2 rounded">
-                            Locked
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                                >
+                                  {item.status === 'Reported Fault' ? 'Approve 🛠️' : 'Maintain 🛠️'}
+                                </button>
+                              ) : (
+                                <button
+                                  disabled={processingId !== null}
+                                  onClick={() => handleUpdateStatus(item.id, 'Available')}
+                                  className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-[11px] font-bold uppercase tracking-normal transition-all duration-150 shadow-sm shadow-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-0.5 whitespace-nowrap"
+                                >
+                                  Fix Done ✅
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest bg-slate-900/50 border border-slate-800/60 py-1 px-2 rounded">
+                              Locked
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : (
@@ -566,7 +610,7 @@ function Equipments({ user }) {
                           <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${req.duration === 'Short'
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                             : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                          }`}>
+                            }`}>
                             {req.duration} Term
                           </span>
                         </td>
@@ -654,10 +698,11 @@ function Equipments({ user }) {
                             <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[10px] font-black border uppercase tracking-wider ${req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
                               req.status.startsWith('Rejected') || req.status.startsWith('Declined') ? 'bg-red-500/10 text-red-400 border-red-500/20' :
                                 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                            }`}>
+                              }`}>
                               {req.status}
                             </span>
                           </td>
+                          
                         </tr>
                       ))}
                     </tbody>
@@ -756,6 +801,26 @@ function Equipments({ user }) {
                 <input
                   type="text" placeholder="e.g., MD043" value={eqPartNo} onChange={(e) => setEqPartNo(e.target.value)}
                   className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">Equipment Category *</label>
+                <select
+                  value={eqCategory}
+                  onChange={(e) => setEqCategory(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="Major" className="bg-[#111E43]">🛠️ Major Equipment</option>
+                  <option value="Minor" className="bg-[#111E43]">🧰 Minor Equipment</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 uppercase font-bold tracking-wider mb-1">Description Manual (PDF)</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setEqPdf(e.target.files[0])}
+                  className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:uppercase file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
                 />
               </div>
               <div>

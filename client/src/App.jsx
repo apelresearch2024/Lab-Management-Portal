@@ -13,7 +13,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(() => {
     const savedTab = sessionStorage.getItem('labPortal_main_activeTab');
-    const validTabs = ['consumables', 'scholars', 'equipments', 'stocks'];
+    const validTabs = ['consumables', 'scholars', 'equipments'];
     return validTabs.includes(savedTab) ? savedTab : 'consumables';
   });
 
@@ -101,7 +101,6 @@ function App() {
         {activeTab === 'consumables' && <Consumables user={user} />}
         {activeTab === 'scholars' && user.role === 'Professor' && <ManageScholars />}
         {activeTab === 'equipments' && <Equipments user={user} />}
-        {activeTab === 'stocks' && <Stocks user={user}/>}
 
         <ToastContainer
           position="top-center"
